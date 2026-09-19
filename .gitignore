@@ -1,0 +1,78 @@
+# =========================
+# .NET / ASP.NET
+# =========================
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# =========================
+# Python
+# =========================
+**/.venv/
+**/venv/
+**/env/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# Node.js
+# =========================
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# =========================
+# IDE
+# =========================
+.idea/
+.vscode/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Local database files
+# =========================
+*.mdf
+*.ldf
+*.bak
+*.sqlite
+*.sqlite3
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Certificates / private keys
+# =========================
+*.pem
+*.key
+*.pfx
+*.jks
+*.keystore
+
+# =========================
+# Temporary files
+# =========================
+*.tmp
+*.temp

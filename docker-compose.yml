@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: digism_postgres
+    environment:
+      POSTGRES_DB: digism_pos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d digism_pos"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+  pos-api:
+    build:
+      context: ./pos-api/src/PosApi
+      dockerfile: Dockerfile
+    container_name: digism_pos_api
+    environment:
+      ConnectionStrings__PosDb: "Host=postgres;Port=5432;Database=digism_pos;Username=pos_user;Password=pos_pass"
+      Jwt__Issuer: "DigiSME.PosApi"
+      Jwt__Audience: "DigiSME.Frontend"
+      Jwt__SecretKey: "CHANGE_ME_IN_PRODUCTION_9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e"
+      Jwt__AccessTokenMinutes: "480"
+      Jwt__ResetCodeMinutes: "30"
+      AiService__BaseUrl: "http://ai-service:8001"
+      AiService__InternalToken: "ai-internal-dev-token"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: digism_ai_service
+    environment:
+      POSTGRES_DSN: "postgresql://ai_reader:ai_reader_pass@postgres:5432/digism_pos"
+      POS_API_BASE: "http://pos-api:8000"
+      INTERNAL_TOKEN: "ai-internal-dev-token"
+      LLM_API_KEY: ""
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pg_data:

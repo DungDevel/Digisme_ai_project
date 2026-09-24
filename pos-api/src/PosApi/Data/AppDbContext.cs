@@ -29,6 +29,9 @@ public class AppDbContext : DbContext
     public DbSet<SupplierInvoice> SupplierInvoices => Set<SupplierInvoice>();
     public DbSet<StockIn> StockIns => Set<StockIn>();
     public DbSet<StockInItem> StockInItems => Set<StockInItem>();
+    public DbSet<StoreSetting> StoreSettings => Set<StoreSetting>();
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+    public DbSet<InvoiceDayCounter> InvoiceDayCounters => Set<InvoiceDayCounter>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -68,6 +71,9 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.Product).WithMany(x => x.Units).HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Unit).WithMany().HasForeignKey(x => x.UnitId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.ConversionRate).HasPrecision(18, 4);
+            e.Property(x => x.Barcode).HasMaxLength(64);
+            // Barcode riêng cho đơn vị đóng gói — unique, ignore null (1 barcode chỉ trỏ 1 product/unit)
+            e.HasIndex(x => x.Barcode).IsUnique().HasDatabaseName("ix_product_units_barcode");
         });
 
         mb.Entity<Surcharge>(e =>
@@ -89,6 +95,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.RetailPrice).HasPrecision(18, 2);
             e.Property(x => x.WholesalePrice).HasPrecision(18, 2);
             e.Property(x => x.MemberPrice).HasPrecision(18, 2);
+            e.Property(x => x.MinStock).HasPrecision(18, 3);
+            e.Property(x => x.CurrentStock).HasPrecision(18, 3);
             e.HasOne(x => x.Category).WithMany(x => x.Products).HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -151,9 +159,11 @@ public class AppDbContext : DbContext
         {
             e.HasOne(x => x.Order).WithMany(x => x.Items).HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Qty).HasPrecision(18, 3);
             e.Property(x => x.UnitPrice).HasPrecision(18, 2);
             e.Property(x => x.Surcharge).HasPrecision(18, 2);
             e.Property(x => x.Total).HasPrecision(18, 2);
+            e.Property(x => x.ReturnedQty).HasPrecision(18, 3);
         });
 
         mb.Entity<HeldCart>(e =>
@@ -176,6 +186,7 @@ public class AppDbContext : DbContext
         {
             e.HasOne(x => x.Return).WithMany(x => x.Items).HasForeignKey(x => x.ReturnId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.OrderItem).WithMany().HasForeignKey(x => x.OrderItemId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Qty).HasPrecision(18, 3);
             e.Property(x => x.UnitPrice).HasPrecision(18, 2);
             e.Property(x => x.Total).HasPrecision(18, 2);
         });
@@ -184,6 +195,8 @@ public class AppDbContext : DbContext
         mb.Entity<StockLedgerEntry>(e =>
         {
             e.HasIndex(x => new { x.ProductId, x.CreatedAt });
+            e.Property(x => x.Qty).HasPrecision(18, 3);
+            e.Property(x => x.Balance).HasPrecision(18, 3);
             e.Property(x => x.RefType).HasConversion<int>();
             e.Property(x => x.RefId).HasMaxLength(64);
         });
@@ -230,8 +243,37 @@ public class AppDbContext : DbContext
         {
             e.HasOne(x => x.StockIn).WithMany(x => x.Items).HasForeignKey(x => x.StockInId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(x => x.Qty).HasPrecision(18, 3);
             e.Property(x => x.UnitCost).HasPrecision(18, 2);
             e.Property(x => x.Total).HasPrecision(18, 2);
+        });
+
+        // ── Store setting (dòng duy nhất, Id=1) ──
+        mb.Entity<StoreSetting>(e =>
+        {
+            e.Property(x => x.StoreName).HasMaxLength(128);
+            e.Property(x => x.Address).HasMaxLength(256);
+            e.Property(x => x.VietQrBankCode).HasMaxLength(16);
+            e.Property(x => x.VietQrAccountNo).HasMaxLength(32);
+            e.Property(x => x.VietQrAccountName).HasMaxLength(128);
+            e.Property(x => x.VatRatePercent).HasPrecision(5, 2);
+        });
+
+        // ── Idempotency ──
+        mb.Entity<IdempotencyRecord>(e =>
+        {
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(128);
+            e.Property(x => x.Endpoint).HasMaxLength(64);
+            e.HasIndex(x => x.ExpiresAt);
+        });
+
+        // ── Invoice day counter ──
+        mb.Entity<InvoiceDayCounter>(e =>
+        {
+            e.ToTable("invoice_day_counter");
+            e.HasKey(x => x.Day);
+            e.Property(x => x.Day).HasMaxLength(10);
         });
     }
 }

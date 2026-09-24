@@ -157,6 +157,53 @@ namespace PosApi.Migrations
                     b.ToTable("HeldCarts");
                 });
 
+            modelBuilder.Entity("PosApi.Domain.IdempotencyRecord", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResultJson")
+                        .HasColumnType("text");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.ToTable("IdempotencyRecords");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.InvoiceDayCounter", b =>
+                {
+                    b.Property<string>("Day")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("N")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Day");
+
+                    b.ToTable("invoice_day_counter", (string)null);
+                });
+
             modelBuilder.Entity("PosApi.Domain.LoyaltyAccount", b =>
                 {
                     b.Property<int>("Id")
@@ -283,11 +330,13 @@ namespace PosApi.Migrations
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("Qty")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("Qty")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
-                    b.Property<int>("ReturnedQty")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("ReturnedQty")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
                     b.Property<decimal>("Surcharge")
                         .HasPrecision(18, 2)
@@ -446,18 +495,23 @@ namespace PosApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("CurrentStock")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("CurrentStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsWeighed")
                         .HasColumnType("boolean");
 
                     b.Property<decimal>("MemberPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<int>("MinStock")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("MinStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -496,6 +550,10 @@ namespace PosApi.Migrations
                     b.Property<int>("UnitId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Barcode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<decimal>("ConversionRate")
                         .HasPrecision(18, 4)
                         .HasColumnType("numeric(18,4)");
@@ -504,6 +562,10 @@ namespace PosApi.Migrations
                         .HasColumnType("boolean");
 
                     b.HasKey("ProductId", "UnitId");
+
+                    b.HasIndex("Barcode")
+                        .IsUnique()
+                        .HasDatabaseName("ix_product_units_barcode");
 
                     b.HasIndex("UnitId");
 
@@ -521,8 +583,9 @@ namespace PosApi.Migrations
                     b.Property<int>("OrderItemId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("Qty")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("Qty")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
                     b.Property<int>("ReturnId")
                         .HasColumnType("integer");
@@ -678,8 +741,9 @@ namespace PosApi.Migrations
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("Qty")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("Qty")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
                     b.Property<int>("StockInId")
                         .HasColumnType("integer");
@@ -709,8 +773,9 @@ namespace PosApi.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
-                    b.Property<int>("Balance")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("Balance")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -721,8 +786,9 @@ namespace PosApi.Migrations
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("Qty")
-                        .HasColumnType("integer");
+                    b.Property<decimal>("Qty")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
 
                     b.Property<string>("RefId")
                         .HasMaxLength(64)
@@ -736,6 +802,51 @@ namespace PosApi.Migrations
                     b.HasIndex("ProductId", "CreatedAt");
 
                     b.ToTable("StockLedger");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.StoreSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("StoreName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("VatRatePercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<string>("VietQrAccountName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("VietQrAccountNo")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("VietQrBankCode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("StoreSettings");
                 });
 
             modelBuilder.Entity("PosApi.Domain.SupplierInvoice", b =>

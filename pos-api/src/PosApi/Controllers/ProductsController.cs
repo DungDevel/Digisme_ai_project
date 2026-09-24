@@ -38,7 +38,7 @@ public class ProductsController : ControllerBase
             p.Id, p.Name, p.Barcode, p.CategoryId, p.Category.Name,
             p.RetailPrice, p.WholesalePrice, p.MemberPrice,
             p.CurrentStock, baseUnit?.Unit?.Name ?? "cái",
-            p.CurrentStock <= p.MinStock));
+            p.CurrentStock <= p.MinStock, p.IsWeighed));
     }
 
     /// <summary>Tìm kiếm + phân trang (keyset bằng page/size), filter theo nhóm.</summary>

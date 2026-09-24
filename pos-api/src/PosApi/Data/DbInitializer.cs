@@ -87,7 +87,9 @@ public static class DbInitializer
                     WholesalePrice = retail - retail / 6,
                     MemberPrice = retail - retail / 10,
                     MinStock = 10,
-                    CurrentStock = stock
+                    CurrentStock = stock,
+                    // SP 1..3 là hàng cân (kg) để test decimal qty
+                    IsWeighed = i <= 3
                 };
                 products.Add(p);
 
@@ -115,6 +117,22 @@ public static class DbInitializer
 
             await db.SaveChangesAsync();
             log.LogInformation("Seeded 200 products with barcodes 000000001..000000200");
+        }
+
+        // ── StoreSetting (dòng duy nhất) ──
+        if (!await db.StoreSettings.AnyAsync())
+        {
+            db.StoreSettings.Add(new StoreSetting
+            {
+                StoreName = "DigiSME Store Demo",
+                Address = "123 Đường Demo, Quận 1, TP.HCM",
+                VietQrBankCode = "MB",
+                VietQrAccountNo = "0987654321",
+                VietQrAccountName = "DIGISME DEMO",
+                VatRatePercent = 10m
+            });
+            await db.SaveChangesAsync();
+            log.LogInformation("Seeded StoreSetting");
         }
 
         // ── Customer mẫu ──

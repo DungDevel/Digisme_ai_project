@@ -114,6 +114,16 @@ curl "http://localhost:8000/api/v1/products?q=Coca&pageSize=5"
 # 4) Health tổng thể
 curl http://localhost:8000/api/v1/health/ready
 # → { "status": "ready", "database": true, "aiService": true }
+
+# 5) Tạo đơn bán hàng (Sprint 1) — cần token từ bước 1
+#    Request bắt buộc: customerId, paymentMethod, paidAmount, discount, surcharges, items
+curl -X POST http://localhost:8000/api/v1/orders ^
+  -H "Authorization: Bearer ***" ^
+  -H "Content-Type: application/json" ^
+  -H "Idempotency-Key: a1b2c3d4" ^
+  -d "{\"customerId\":null,\"paymentMethod\":\"cash\",\"paidAmount\":100000,\"discount\":0,\"surcharges\":[],\"items\":[{\"productId\":1,\"unitId\":null,\"qty\":2,\"unitPrice\":14373}]}"
+# → { "id": 1, "code": "INV-20260924-0001", "total": 28746, "change": 71254, ... }
+# Gửi lại cùng Idempotency-Key → trả lại đơn cũ, KHÔNG tạo đơn mới
 ```
 
 Cần token cho endpoint bảo vệ: thêm header `Authorization: Bearer <accessToken>`.
@@ -125,7 +135,7 @@ ai-service: `http://localhost:8001/docs`.
 
 ## 6. Chức năng các API
 
-Trạng thái: ✅ = **đã implement (Phase 0)** — chạy được ngay | 🟡 = contract đã chốt, implement theo sprint.
+Trạng thái: ✅ = **đã implement** — chạy được ngay | 🟡 = contract đã chốt, implement theo sprint.
 
 ### pos-api (port 8000)
 
@@ -153,11 +163,35 @@ Role: `Cashier` (bán hàng, tạo đơn, trả hàng) | `Manager` (+báo cáo, 
 | GET | `/api/v1/products?q=&categoryId=&page=&pageSize=` | Tìm kiếm tên/barcode + lọc nhóm + phân trang |
 | 🟡 | `/api/v1/catalog/products|categories|surcharges` | CRUD quản trị (Manager only, Sprint 2) |
 
-**M4. ORDERS (bán hàng) — 🟡 Sprint 1**
-- `POST /api/v1/orders` — **tạo đơn tại quầy**: 1 transaction trừ kho + ghi ledger + cộng điểm loyalty + ghi nợ. Giá/tiền thừa backend tính lại, không tin client.
-- `GET /api/v1/orders?from=&to=&cashierId=&status=` — lịch sử đơn (Manager).
-- `POST /api/v1/orders/{id}/cancel` — hủy đơn, trả lại kho. `PUT .../items/{itemId}/price` — sửa giá (ghi audit log).
-- `POST /api/v1/carts/hold` / `GET /api/v1/carts/hold` / `POST /api/v1/carts/{id}/resume` — **hold/resume giỏ hàng** (F7: khách đi tạm, ghi lại giỏ).
+**M4. ORDERS (bán hàng) — ✅ Sprint 1 (GET lịch sử / hủy / sửa giá 🟡 Sprint 2)**
+
+| Method | Path | Chức năng |
+|---|---|---|
+| POST | `/api/v1/orders` | **Tạo đơn tại quầy** (BE-01). Mọi giá trị được server **tính lại**, không tin client. Header `Idempotency-Key` (tùy chọn): retry cùng key (cùng user, 24h) → trả lại response lần chạy đầu, không tạo đơn mới |
+| 🟡 | `GET /api/v1/orders?from=&to=&cashierId=&status=` | Lịch sử đơn (Manager) — Sprint 2 |
+| 🟡 | `POST /api/v1/orders/{id}/cancel` · `PUT .../items/{itemId}/price` | Hủy đơn trả kho · sửa giá (audit log) — Sprint 2 |
+
+Engine tính giá (1 transaction, `SELECT ... FOR UPDATE` khóa dòng product trừ kho atomic khi order song song):
+
+- **Giá tầng**: khách hàng hoạt động + `memberPrice > 0` → giá thành viên, không thì giá lẻ. Giá trong DB là **giá gom VAT** → cột `Vat` chỉ tách hiển thị: `vat = base × rate / (100 + rate)`.
+- **Đơn vị**: `unitId` khác gốc → quy qty & unitPrice về đơn vị gốc theo `conversionRate`; hàng cân (`isWeighed`) cho ≤ 3 số lẻ, hàng đếm phải nguyên.
+- **Chiết khấu / phụ phí**: `discount` chặn âm & chặn vượt subtotal; chỉ nhận phụ phí loại `Auto` đang trong giai hạn (`ActiveFrom`/`ActiveUntil`), hỗ trợ `overrideValue`.
+- **Thanh toán**: `cash` → `paid ≥ total`, trả `change`, đơn `completed` · `debt` → bắt buộc `customerId`, phần thiếu tự tạo `Debt` · `vietqr`/`banktransfer` → đơn `pending` + `Payment` chờ confirm (Sprint 2).
+- **Loyalty**: 1 điểm / 1.000đ, chỉ khi đơn `completed` + có khách.
+- **Mã đơn** `INV-yyyymmdd-nnnn` từ bảng `invoice_day_counter` (`INSERT ... ON CONFLICT ... RETURNING`, row lock — không trùng khi concurrent).
+- **Kho**: thiếu tồn → 400 `StockShortageException` (không tạo đơn); tồn rơi ≤ `minStock` → kèm `stockWarnings`.
+- **Audit**: ghi `ORDER_CREATED` vào bảng log append-only.
+
+**Hold / Resume giỏ hàng (F7) — ✅ Sprint 1**
+
+| Method | Path | Chức năng |
+|---|---|---|
+| POST | `/api/v1/carts/hold` | Lưu snapshot giỏ (items + subtotal) — **không** tạo đơn, **không** trừ kho. Tối đa 200 dòng, ghi chú ≤ 256 ký tự |
+| GET | `/api/v1/carts/hold` | Danh sách giỏ hold của user hiện tại (chưa hết hạn) |
+| POST | `/api/v1/carts/{id}/resume` | Trả giỏ về + kiểm tra lại tồn kho; thiếu vẫn trả giỏ, kèm `stockWarning: true` (frontend tự điều chỉnh) |
+| DELETE | `/api/v1/carts/{id}` | Hủy giỏ hold |
+
+Giỏ hết hạn sau `HoldCart:ExpireMinutes` (mặc định 240 phút, cấu hình qua appsettings — không hard-code). 1 cart chỉ thuộc 1 user; resume/cancel đặt trạng thái nguyên tử.
 
 **M5. RETURNS (trả hàng) — 🟡 Sprint 2**
 - `POST /api/v1/returns` — trả hàng theo đơn (validate không vượt qty gốc, hoàn theo đơn giá tại thời điểm bán, tự cộng kho).
@@ -168,10 +202,14 @@ Role: `Cashier` (bán hàng, tạo đơn, trả hàng) | `Manager` (+báo cáo, 
 - `POST /api/v1/inventory/adjust` — điều chỉnh kho thủ công (Manager, ghi log).
 - 🟡 Sprint 3: `POST /api/v1/stock-ins` — nhập kho từ ảnh hóa đơn qua OCR (gửi ảnh → ai-service trích → review → confirm).
 
-**M7. CRM (khách hàng) — 🟡 Sprint 2-3**
-- `GET /api/v1/customers/by-phone/{phone}` — **tra khách theo SĐT khi đang bán** (F2: hiện tổng nợ + điểm + tier ngay trên màn hình thu ngân).
-- `POST /api/v1/customers` — tạo khách (tự kèm tài khoản loyalty).
-- `POST /api/v1/debts/{id}/pay` — phiếu thu nợ.
+**M7. CRM (khách hàng) — ✅ tra/tạo khách (Sprint 1) · phiếu thu nợ 🟡 Sprint 2**
+
+| Method | Path | Chức năng |
+|---|---|---|
+| GET | `/api/v1/customers/by-phone/{phone}` | **Tra khách theo SĐT khi đang bán** (F2: hiện tổng nợ + điểm + tier ngay trên màn hình thu ngân). Chuẩn hoá SĐT (bỏ 84/0084, 9–10 số); chỉ trả khách còn active; KHÔNG lộ dữ liệu nhạy cảm |
+| POST | `/api/v1/customers` | Tạo khách mới (tự kèm tài khoản loyalty Silver). Validate SĐT + chặn duplicate theo SĐT (409), tên ≤ 128 ký tự |
+| GET | `/api/v1/customers?q=&page=&pageSize=` | Tìm theo tên/SĐT + phân trang, kèm tổng nợ của từng khách |
+| 🟡 | `POST /api/v1/debts/{id}/pay` | Phiếu thu nợ — Sprint 2 |
 
 **M8. PAYMENTS / VietQR — 🟡 Sprint 2**
 - `POST /api/v1/orders/{id}/payments/vietqr` — sinh QR EMVCo động để khách quét chuyển khoản.
@@ -181,8 +219,9 @@ Role: `Cashier` (bán hàng, tạo đơn, trả hàng) | `Manager` (+báo cáo, 
 **M9. SHIFT (ca làm việc) — 🟡 Sprint 2**
 - `POST /api/v1/shifts` — mở ca (bắt buộc có ca mở mới tạo được đơn), `POST /api/v1/shifts/{id}/close` — kết ca báo cáo chênh lệch tiền mặt.
 
-**M10. AUDIT LOG — 🟡 từ Sprint 1 (ghi), Sprint 2 (API)**
-- `GET /api/v1/audit/logs?action=&from=&to=` — truy vết: hủy đơn, sửa giá, mở két không bán hàng... Bảng append-only, DB trigger chặn sửa/xoá.
+**M10. AUDIT LOG — ✅ ghi (Sprint 1) · API đọc 🟡 Sprint 2**
+- Sprint 1 đã ghi: `ORDER_CREATED`, `CUSTOMER_CREATED` (+ payload context) vào bảng `PosLogs` append-only.
+- `GET /api/v1/audit/logs?action=&from=&to=` — truy vết: hủy đơn, sửa giá, mở két không bán hàng... DB trigger chặn sửa/xoá.
 
 ### ai-service (port 8001) — 🟡 Sprint 3 (hiện có mock ✅)
 
@@ -230,9 +269,9 @@ DigiSME_AI_Project/
 │   │   ├── Domain/             # Entities (21 bảng) — code-first
 │   │   ├── Data/               # AppDbContext + DbInitializer (seed)
 │   │   ├── Migrations/         # EF Core migrations
-│   │   ├── Controllers/        # Auth, Health, Products
+│   │   ├── Controllers/        # Auth, Health, Products, Orders, Carts, Customers
 │   │   ├── Dto/                # Request/response contracts
-│   │   └── Services/           # TicketService (JWT)
+│   │   └── Services/           # TicketService (JWT), OrderService, CartService, PosLogService
 │   └── src/PosApi/Dockerfile
 └── ai-service/
     ├── pyproject.toml          # FastAPI + uvicorn + psycopg (Python 3.11+)
@@ -244,6 +283,6 @@ DigiSME_AI_Project/
 
 ## 9. Phân công sprint (backend)
 
-- **Sprint 1** — `POST /orders` (engine tính giá: giá tầng, phụ phí, chiết khấu, tiền thừa) + hold cart + bắt đầu ghi audit log.
-- **Sprint 2** — CRUD catalog, returns, inventory, CRM, VietQR, shifts, SignalR.
+- **Sprint 1 — ✅ HOÀN THÀNH** — `POST /orders` (engine tính giá: giá tầng, phụ phí, chiết khấu, tiền thừa, idempotency, trừ kho atomic) · hold/resume cart · tra/tạo khách (F2) · bắt đầu ghi audit log.
+- **Sprint 2** — CRUD catalog, returns, inventory, phiếu thu nợ, VietQR, shifts, SignalR, audit API.
 - **Sprint 3** — OCR stock-in (liên thông ai-service), loyalty summary, replenishment, copilot thật (LLM).

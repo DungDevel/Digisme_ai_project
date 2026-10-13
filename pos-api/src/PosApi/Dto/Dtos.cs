@@ -42,3 +42,32 @@ public record ResumeCartResponse(int Id, int? CustomerId, string Note, decimal S
 public record CustomerCreateRequest(string Phone, string Name, string? Address);
 public record CustomerResponse(int Id, string Phone, string Name, string? Address, bool IsActive, int Points, string Tier, decimal TotalDebt);
 public record PagedCustomerResponse(int Page, int PageSize, int Total, int TotalPages, List<CustomerResponse> Items);
+
+// ── Debts (P0-4: đường trả nợ — Debt không còn kẹt Open vĩnh viễn) ──
+public record PayDebtRequest(decimal Amount, string? Note);
+public record DebtResponse(int Id, int CustomerId, string CustomerPhone, string CustomerName,
+    decimal Amount, decimal PaidAmount, decimal Remaining, string Status, string? Note, DateTime CreatedAt);
+public record PagedDebtResponse(int Page, int PageSize, int Total, int TotalPages, List<DebtResponse> Items);
+public record PayDebtResponse(int Id, decimal Amount, decimal PaidAmount, decimal Remaining, string Status);
+
+// ── Returns (M5) ──
+public record ReturnItemRequest(int OrderItemId, decimal Qty);
+public record ReturnRequest(int OrderId, string? Reason, List<ReturnItemRequest> Items);
+public record ReturnResponse(string Code, decimal TotalReturned, DateTime CreatedAt);
+public record ReturnItemResponse(int Id, string ProductName, decimal Qty, decimal UnitPrice, decimal Total);
+public record ReturnDetailResponse(int Id, string Code, int OrderId, string? Reason, decimal TotalReturned, DateTime CreatedAt, List<ReturnItemResponse> Items);
+public record PagedReturnResponse(int Page, int PageSize, int Total, int TotalPages, List<ReturnBrief> Items);
+public record ReturnBrief(int Id, string Code, int OrderId, decimal TotalReturned, DateTime CreatedAt);
+
+// ── Inventory (M6) ──
+public record InventoryResponse(int ProductId, string ProductName, string Barcode, decimal Stock, string Unit, bool IsLowStock);
+public record InventoryItemBrief(int ProductId, string ProductName, string Barcode, decimal Stock, string BaseUnit, bool IsLowStock);
+public record PagedInventoryResponse(int Page, int PageSize, int Total, int TotalPages, List<InventoryItemBrief> Items);
+public record StockHistoryResponse(int ProductId, string ProductName, decimal CurrentStock, List<StockLedgerEntryBrief> History);
+public record StockLedgerEntryBrief(int Id, DateTime CreatedAt, decimal Qty, decimal Balance, string RefType, string RefId, string Note);
+public record InventoryAdjustRequest(decimal Amount, string Reason);
+
+// ── Stock-In (M7) ──
+public record StockInItemRequest(int ProductId, decimal Qty, decimal UnitCost);
+public record ConfirmStockInRequest(int InvoiceId, List<StockInItemRequest> Items, string? SupplierName, string? Note);
+public record StockInCreatedResponse(int Id, string Code, decimal Total, DateTime CreatedAt);

@@ -4,11 +4,11 @@ Bộ backend cho hệ thống POS bán lẻ SME, gồm **2 service**:
 
 | Service | Công nghệ | Port | Vai trò |
 |---|---|---|---|
-| `pos-api` | ASP.NET Core 8 (C#) | `8000` | Nghiệp vụ chính: auth, bán hàng, kho, khách hàng, thu chi |
+| `pos-api` | ASP.NET Core 8 (C#) | `8000` | Nghiệp vụ chính: auth, bán hàng, kho, nhập kho, khách hàng, thu chi |
 | `ai-service` | FastAPI (Python 3.11+) | `8001` | OCR hóa đơn nhập kho + Copilot hỏi đáp dữ liệu |
 | PostgreSQL 16 | Docker | `5432` | Database chung `digism_pos` (21 bảng, 18 entity) |
 
-> 📄 API contract chi tiết (request/response từng endpoint, 12 module): [`docs/api-contract.md`](docs/api-contract.md)
+> 📄 API contract chi tiết (request/response từng endpoint, các module): [`docs/api-contract.md`](docs/api-contract.md)
 
 ---
 
@@ -95,7 +95,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8001
 
 ---
 
-## 5. Verification — 4 lệnh xác nhận mọi thứ chạy
+## 5. Verification — Lệnh xác nhận mọi thứ chạy
 
 ```bash
 # 1) Đăng nhập → lấy token
@@ -115,15 +115,13 @@ curl "http://localhost:8000/api/v1/products?q=Coca&pageSize=5"
 curl http://localhost:8000/api/v1/health/ready
 # → { "status": "ready", "database": true, "aiService": true }
 
-# 5) Tạo đơn bán hàng (Sprint 1) — cần token từ bước 1
-#    Request bắt buộc: customerId, paymentMethod, paidAmount, discount, surcharges, items
+# 5) Tạo đơn bán hàng — cần token từ bước 1
 curl -X POST http://localhost:8000/api/v1/orders ^
   -H "Authorization: Bearer ***" ^
   -H "Content-Type: application/json" ^
   -H "Idempotency-Key: a1b2c3d4" ^
   -d "{\"customerId\":null,\"paymentMethod\":\"cash\",\"paidAmount\":100000,\"discount\":0,\"surcharges\":[],\"items\":[{\"productId\":1,\"unitId\":null,\"qty\":2,\"unitPrice\":14373}]}"
 # → { "id": 1, "code": "INV-20260924-0001", "total": 28746, "change": 71254, ... }
-# Gửi lại cùng Idempotency-Key → trả lại đơn cũ, KHÔNG tạo đơn mới
 ```
 
 Cần token cho endpoint bảo vệ: thêm header `Authorization: Bearer <accessToken>`.
@@ -156,88 +154,63 @@ Role: `Cashier` (bán hàng, tạo đơn, trả hàng) | `Manager` (+báo cáo, 
 | GET | `/api/v1/health` | Trạng thái service, không cần auth |
 | GET | `/api/v1/health/ready` | Kiểm tra DB + ai-service (dùng cho monitor/load balancer) |
 
-**M3. CATALOG — ✅ endpoint mẫu (CRUD quản trị 🟡 Sprint 2)**
+**M3. CATALOG — ✅ endpoint mẫu & tra cứu**
 | Method | Path | Chức năng |
 |---|---|---|
 | GET | `/api/v1/products/barcode/{code}` | **Tra mã vạch khi thu ngân scan** — p99 < 50ms, trả tên, giá lẻ/sỉ/thành viên, tồn, đơn vị gốc, cảnh báo dưới định mức |
 | GET | `/api/v1/products?q=&categoryId=&page=&pageSize=` | Tìm kiếm tên/barcode + lọc nhóm + phân trang |
-| 🟡 | `/api/v1/catalog/products|categories|surcharges` | CRUD quản trị (Manager only, Sprint 2) |
+| 🟡 | `/api/v1/catalog/products|categories|surcharges` | CRUD quản trị (Manager only) |
 
-**M4. ORDERS (bán hàng) — ✅ Sprint 1 (GET lịch sử / hủy / sửa giá 🟡 Sprint 2)**
-
+**M4. ORDERS (bán hàng) — ✅**
 | Method | Path | Chức năng |
 |---|---|---|
-| POST | `/api/v1/orders` | **Tạo đơn tại quầy** (BE-01). Mọi giá trị được server **tính lại**, không tin client. Header `Idempotency-Key` (tùy chọn): retry cùng key (cùng user, 24h) → trả lại response lần chạy đầu, không tạo đơn mới |
-| 🟡 | `GET /api/v1/orders?from=&to=&cashierId=&status=` | Lịch sử đơn (Manager) — Sprint 2 |
-| 🟡 | `POST /api/v1/orders/{id}/cancel` · `PUT .../items/{itemId}/price` | Hủy đơn trả kho · sửa giá (audit log) — Sprint 2 |
+| POST | `/api/v1/orders` | **Tạo đơn tại quầy**. Mọi giá trị được server **tính lại**, không tin client. Header `Idempotency-Key` (tùy chọn): retry cùng key (cùng user, 24h) → trả lại response lần chạy đầu, không tạo đơn mới |
+| 🟡 | `GET /api/v1/orders?from=&to=&cashierId=&status=` | Lịch sử đơn (Manager) |
 
 Engine tính giá (1 transaction, `SELECT ... FOR UPDATE` khóa dòng product trừ kho atomic khi order song song):
-
-- **Giá tầng**: khách hàng hoạt động + `memberPrice > 0` → giá thành viên, không thì giá lẻ. Giá trong DB là **giá gom VAT** → cột `Vat` chỉ tách hiển thị: `vat = base × rate / (100 + rate)`.
-- **Đơn vị**: `unitId` khác gốc → quy qty & unitPrice về đơn vị gốc theo `conversionRate`; hàng cân (`isWeighed`) cho ≤ 3 số lẻ, hàng đếm phải nguyên.
-- **Chiết khấu / phụ phí**: `discount` chặn âm & chặn vượt subtotal; chỉ nhận phụ phí loại `Auto` đang trong giai hạn (`ActiveFrom`/`ActiveUntil`), hỗ trợ `overrideValue`.
-- **Thanh toán**: `cash` → `paid ≥ total`, trả `change`, đơn `completed` · `debt` → bắt buộc `customerId`, phần thiếu tự tạo `Debt` · `vietqr`/`banktransfer` → đơn `pending` + `Payment` chờ confirm (Sprint 2).
-- **Loyalty**: 1 điểm / 1.000đ, chỉ khi đơn `completed` + có khách.
-- **Mã đơn** `INV-yyyymmdd-nnnn` từ bảng `invoice_day_counter` (`INSERT ... ON CONFLICT ... RETURNING`, row lock — không trùng khi concurrent).
-- **Kho**: thiếu tồn → 400 `StockShortageException` (không tạo đơn); tồn rơi ≤ `minStock` → kèm `stockWarnings`.
+- **Giá tầng**: khách hàng hoạt động + `memberPrice > 0` → giá thành viên, không thì giá lẻ. Giá trong DB là **giá gom VAT** → cột `Vat` chỉ tách hiển thị.
+- **Đơn vị**: `unitId` khác gốc → quy qty & unitPrice về đơn vị gốc theo `conversionRate`.
+- **Chiết khấu / phụ phí**: `discount` chặn âm & chặn vượt subtotal; nhận phụ phí loại `Auto` đang trong giai hạn.
+- **Thanh toán**: `cash` → `paid ≥ total`, trả `change`, đơn `completed`.
+- **Mã đơn** `INV-yyyymmdd-nnnn` từ bảng `invoice_day_counter` (`INSERT ... ON CONFLICT ... RETURNING`, row lock).
+- **Kho**: thiếu tồn → 400 `StockShortageException` (không tạo đơn).
 - **Audit**: ghi `ORDER_CREATED` vào bảng log append-only.
 
-**Hold / Resume giỏ hàng (F7) — ✅ Sprint 1**
-
+**Hold / Resume giỏ hàng (F7) — ✅**
 | Method | Path | Chức năng |
 |---|---|---|
-| POST | `/api/v1/carts/hold` | Lưu snapshot giỏ (items + subtotal) — **không** tạo đơn, **không** trừ kho. Tối đa 200 dòng, ghi chú ≤ 256 ký tự |
-| GET | `/api/v1/carts/hold` | Danh sách giỏ hold của user hiện tại (chưa hết hạn) |
-| POST | `/api/v1/carts/{id}/resume` | Trả giỏ về + kiểm tra lại tồn kho; thiếu vẫn trả giỏ, kèm `stockWarning: true` (frontend tự điều chỉnh) |
+| POST | `/api/v1/carts/hold` | Lưu snapshot giỏ (items + subtotal) — **không** tạo đơn, **không** trừ kho |
+| GET | `/api/v1/carts/hold` | Danh sách giỏ hold của user hiện tại |
+| POST | `/api/v1/carts/{id}/resume` | Trả giỏ về + kiểm tra lại tồn kho |
 | DELETE | `/api/v1/carts/{id}` | Hủy giỏ hold |
 
-Giỏ hết hạn sau `HoldCart:ExpireMinutes` (mặc định 240 phút, cấu hình qua appsettings — không hard-code). 1 cart chỉ thuộc 1 user; resume/cancel đặt trạng thái nguyên tử.
+**M5. RETURNS (trả hàng) — 🟡**
+- `POST /api/v1/returns` — trả hàng theo đơn.
 
-**M5. RETURNS (trả hàng) — 🟡 Sprint 2**
-- `POST /api/v1/returns` — trả hàng theo đơn (validate không vượt qty gốc, hoàn theo đơn giá tại thời điểm bán, tự cộng kho).
+**M6. INVENTORY (kho) — ✅**
+- Tra cứu tồn kho, lịch sử biến động (`StockLedger` append-only).
 
-**M6. INVENTORY (kho) — 🟡 Sprint 2**
-- `GET /api/v1/inventory/stock?belowMin=true` — tồn hiện tại + cảnh báo sắp hết.
-- `GET /api/v1/inventory/ledger?productId=&from=&to=` — lịch sử biến động (append-only, không sửa/xoá được).
-- `POST /api/v1/inventory/adjust` — điều chỉnh kho thủ công (Manager, ghi log).
-- 🟡 Sprint 3: `POST /api/v1/stock-ins` — nhập kho từ ảnh hóa đơn qua OCR (gửi ảnh → ai-service trích → review → confirm).
-
-**M7. CRM (khách hàng) — ✅ tra/tạo khách (Sprint 1) · phiếu thu nợ 🟡 Sprint 2**
-
+**M7. STOCK-IN & SUPPLIER INVOICES (Nhập kho & OCR) — ✅**
 | Method | Path | Chức năng |
 |---|---|---|
-| GET | `/api/v1/customers/by-phone/{phone}` | **Tra khách theo SĐT khi đang bán** (F2: hiện tổng nợ + điểm + tier ngay trên màn hình thu ngân). Chuẩn hoá SĐT (bỏ 84/0084, 9–10 số); chỉ trả khách còn active; KHÔNG lộ dữ liệu nhạy cảm |
-| POST | `/api/v1/customers` | Tạo khách mới (tự kèm tài khoản loyalty Silver). Validate SĐT + chặn duplicate theo SĐT (409), tên ≤ 128 ký tự |
-| GET | `/api/v1/customers?q=&page=&pageSize=` | Tìm theo tên/SĐT + phân trang, kèm tổng nợ của từng khách |
-| 🟡 | `POST /api/v1/debts/{id}/pay` | Phiếu thu nợ — Sprint 2 |
+| POST | `/api/v1/stock-ins` | Upload ảnh hóa đơn (`.jpg`, `.jpeg`, `.png`, `.pdf`) → OCR extract (mock/ai-service), lưu `SupplierInvoice` (`PendingReview`, Manager only) |
+| GET | `/api/v1/stock-ins/{id}` | Xem chi tiết hóa đơn, ảnh và kết quả OCR |
+| PUT | `/api/v1/stock-ins/{id}/items` | Chỉnh sửa danh sách mặt hàng của hóa đơn pending |
+| POST | `/api/v1/stock-ins/{id}/confirm` | Xác nhận nhập kho, khóa dòng (`FOR UPDATE`), tạo mã phiếu `PHNK-yyyyMMdd-nnnn`, cộng tồn kho sản phẩm, ghi `StockLedger` (`RefType.Purchase`), cập nhật trạng thái hóa đơn `Confirmed`, ghi audit log `STOCK_IN_CONFIRMED`, hỗ trợ `X-Idempotency-Key` |
+| DELETE | `/api/v1/stock-ins/{id}` | Từ chối hóa đơn (`Rejected`) |
 
-**M8. PAYMENTS / VietQR — 🟡 Sprint 2**
-- `POST /api/v1/orders/{id}/payments/vietqr` — sinh QR EMVCo động để khách quét chuyển khoản.
-- `GET /api/v1/payments/{id}/status` — frontend **poll mỗi 3s** đến khi `paid` (tự đóng đơn).
-- `POST /api/v1/payments/simulate/{id}` — mock ngân hàng cho demo.
-
-**M9. SHIFT (ca làm việc) — 🟡 Sprint 2**
-- `POST /api/v1/shifts` — mở ca (bắt buộc có ca mở mới tạo được đơn), `POST /api/v1/shifts/{id}/close` — kết ca báo cáo chênh lệch tiền mặt.
-
-**M10. AUDIT LOG — ✅ ghi (Sprint 1) · API đọc 🟡 Sprint 2**
-- Sprint 1 đã ghi: `ORDER_CREATED`, `CUSTOMER_CREATED` (+ payload context) vào bảng `PosLogs` append-only.
-- `GET /api/v1/audit/logs?action=&from=&to=` — truy vết: hủy đơn, sửa giá, mở két không bán hàng... DB trigger chặn sửa/xoá.
-
-### ai-service (port 8001) — 🟡 Sprint 3 (hiện có mock ✅)
-
+**M8. CRM (khách hàng) — ✅**
 | Method | Path | Chức năng |
 |---|---|---|
-| POST | `/api/v1/ai/invoices/extract` | Nhận ảnh hóa đơn (multipart) → **OCR trích items** (tên, số lượng, giá, độ tin cậy) để nhập kho |
-| POST | `/api/v1/ai/copilot/ask` | **Copilot hỏi đáp** bằng tiếng Việt: "Doanh thu tuần này?", "SP nào bán chạy nhất?" → trả chữ + dữ liệu chart |
-| POST | `/api/v1/ai/jobs/ping`, `.../notify/stock-low` | Internal — pos-api gọi khi cần (cảnh báo sắp hết hàng) |
+| GET | `/api/v1/customers/by-phone/{phone}` | **Tra khách theo SĐT** (F2: hiện tổng nợ + điểm + tier) |
+| POST | `/api/v1/customers` | Tạo khách mới + tài khoản loyalty |
+| GET | `/api/v1/customers?q=&page=&pageSize=` | Tìm theo tên/SĐT + phân trang, kèm tổng nợ |
 
-Frontend gọi ai-service qua proxy `/ai/*`; internal token do pos-api thêm, frontend không thấy.
-
-### M12. NOTIFICATIONS (SignalR) — 🟡 Sprint 2
-- Hub `ws://host/hub/notifications`: server push realtime — `stock-low` (sắp hết hàng), `vietqr-paid` (khách vừa chuyển tiền), `shift-closed`...
-
-### SLA (chốt trong contract)
-- Barcode lookup p99 < **50ms** · Search p99 < **300ms** · Tạo đơn p95 < **500ms** · OCR/Copilot: LLM timeout 10s, trả fallback.
+### ai-service (port 8001)
+| Method | Path | Chức năng |
+|---|---|---|
+| POST | `/api/v1/ai/invoices/extract` | Nhận ảnh hóa đơn (multipart) → OCR trích items |
+| POST | `/api/v1/ai/copilot/ask` | Copilot hỏi đáp tiếng Việt |
 
 ---
 
@@ -245,14 +218,12 @@ Frontend gọi ai-service qua proxy `/ai/*`; internal token do pos-api thêm, fr
 
 | Triệu chứng | Nguyên nhân | Cách xử lý |
 |---|---|---|
-| `docker compose up` fail, port 5432/8000/8001 bị chiếm | Ứng dụng khác đang dùng port (SQL Server, uvicorn cũ...) | Tắt app đó, hoặc sửa port mapping trong `docker-compose.yml` |
-| `pos-api` crash ngay khi start, log: `Cannot write DateTime with Kind=Unspecified to PostgreSQL` | Code cũ tạo `DateTime` không gắn UTC | Đã fix trong repo hiện tại — pull code mới nhất |
+| `docker compose up` fail, port 5432/8000/8001 bị chiếm | Ứng dụng khác đang dùng port | Tắt app đó, hoặc sửa port mapping trong `docker-compose.yml` |
+| `pos-api` crash, `Cannot write DateTime with Kind=Unspecified` | Code cũ tạo `DateTime` không gắn UTC | Đã fix trong repo hiện tại — pull code mới nhất |
 | `dotnet build` fail với `access to ... is denied` | Process build server cũ giữ lock | `dotnet build-server shutdown` rồi build lại |
-| Search không ra kết quả | **Case-sensitive**: `q=coca` ≠ `q=Coca` (index `text_pattern_ops`) | Gõ đúng hoa/thường; (sẽ cân nhắc case-insensitive ở Sprint 2) |
+| Search không ra kết quả | **Case-sensitive**: `q=coca` ≠ `q=Coca` | Gõ đúng hoa/thường |
 | `login` trả 401/400 | Sai username/password | Dùng tài khoản seed `admin/admin123` |
-| Port 8001 bị chiếm khi chạy uvicorn local | 1 instance ai-service cũ còn chạy | `taskkill /F /IM python.exe` (cẩn thận) hoặc đổi port |
-| Windows + WSL: lệnh `cd` trong script không sang được `dotnet` | MSYS path conversion | Dùng path Windows `E:\...` cho các tool native |
-| Muốn **reset DB về seed ban đầu** | — | `docker compose down -v` (xoá volume) rồi `docker compose up --build -d` — DB tạo mới, app tự migrate + seed |
+| Muốn **reset DB về seed ban đầu** | — | `docker compose down -v` (xoá volume) rồi `docker compose up --build -d` |
 
 ---
 
@@ -262,16 +233,16 @@ Frontend gọi ai-service qua proxy `/ai/*`; internal token do pos-api thêm, fr
 DigiSME_AI_Project/
 ├── docker-compose.yml          # Postgres + pos-api + ai-service
 ├── db/init/001_roles.sql       # Tạo role pos_user / ai_reader (chạy lần đầu)
-├── docs/api-contract.md        # 📄 API contract 12 module (front/back đọc file này)
+├── docs/api-contract.md        # 📄 API contract chi tiết
 ├── pos-api/
 │   ├── src/PosApi/
 │   │   ├── Program.cs          # Bootstrap: DI, JWT, auto-migrate + seed
 │   │   ├── Domain/             # Entities (21 bảng) — code-first
 │   │   ├── Data/               # AppDbContext + DbInitializer (seed)
 │   │   ├── Migrations/         # EF Core migrations
-│   │   ├── Controllers/        # Auth, Health, Products, Orders, Carts, Customers
+│   │   ├── Controllers/        # Auth, Health, Products, Orders, Carts, Customers, StockIns
 │   │   ├── Dto/                # Request/response contracts
-│   │   └── Services/           # TicketService (JWT), OrderService, CartService, PosLogService
+│   │   └── Services/           # TicketService, OrderService, CartService, StockInService, PosLogService
 │   └── src/PosApi/Dockerfile
 └── ai-service/
     ├── pyproject.toml          # FastAPI + uvicorn + psycopg (Python 3.11+)
@@ -281,8 +252,8 @@ DigiSME_AI_Project/
     └── Dockerfile
 ```
 
-## 9. Phân công sprint (backend)
+## 9. Tiến độ Sprint
 
-- **Sprint 1 — ✅ HOÀN THÀNH** — `POST /orders` (engine tính giá: giá tầng, phụ phí, chiết khấu, tiền thừa, idempotency, trừ kho atomic) · hold/resume cart · tra/tạo khách (F2) · bắt đầu ghi audit log.
-- **Sprint 2** — CRUD catalog, returns, inventory, phiếu thu nợ, VietQR, shifts, SignalR, audit API.
-- **Sprint 3** — OCR stock-in (liên thông ai-service), loyalty summary, replenishment, copilot thật (LLM).
+- **Sprint 1 — ✅ HOÀN THÀNH** — Đặt hàng (`POST /orders` với engine tính giá, idempotency, row locking, trừ kho atomic) · hold/resume cart · tra/tạo khách (F2) · audit log.
+- **Sprint 2 — ✅ M7 STOCK-IN HOÀN THÀNH** — Nhập kho & quản lý hóa đơn nhà cung cấp từ OCR (`POST /api/v1/stock-ins`, confirm, items update, reject, ledger purchase).
+- **Sprint 3 (Tiếp theo)** — Báo cáo nâng cao, VietQR động, ca làm việc (shifts), SignalR realtime notifications.

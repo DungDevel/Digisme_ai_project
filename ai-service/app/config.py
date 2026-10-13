@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     pos_api_base: str = "http://localhost:8000"
     internal_token: str = "ai-internal-dev-token"
     llm_api_key: str = ""          # OpenAI key (Sprint 3 — OCR + Copilot)
-    llm_model: str = "gpt-4o"
+    llm_model: str = "gemini-3.7-flash"
     ocr_engine: str = "llm-vision"  # llm-vision | tesseract
 
     class Config:

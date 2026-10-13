@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using PosApi.Data;
@@ -23,8 +24,18 @@ var jwtCfg = builder.Configuration.GetSection("Jwt").Get<JwtOptions>()
     ?? throw new InvalidOperationException("Section Jwt missing");
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.AddSingleton<ITicketService, TicketService>();
+builder.Services.AddScoped<IStockInService, StockInService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<DebtService>();
 builder.Services.AddScoped<ICartService, CartService>();
+builder.Services.AddScoped<IReturnService, ReturnService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+
+// ── HTTP Client cho Health Check ──
+builder.Services.AddHttpClient("AiServiceClient", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(2);
+});
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(o =>

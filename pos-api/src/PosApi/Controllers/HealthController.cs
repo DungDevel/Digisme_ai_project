@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using PosApi.Data;
+using System.Net.Http;
 
 namespace PosApi.Controllers;
 
@@ -11,10 +12,12 @@ public class HealthController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly string _aiUrl;
-    public HealthController(AppDbContext db, IConfiguration cfg)
+    private readonly HttpClient _httpClient;
+    public HealthController(AppDbContext db, IConfiguration cfg, HttpClient httpClient)
     {
         _db = db;
         _aiUrl = cfg["AiService:BaseUrl"] ?? "http://localhost:8001";
+        _httpClient = httpClient;
     }
 
     /// Liveness: API sống là đủ
@@ -36,11 +39,10 @@ public class HealthController : ControllerBase
         var aiOk = false;
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
-            await http.GetAsync(_aiUrl.TrimEnd('/') + "/health");
-            aiOk = true;
+            var response = await _httpClient.GetAsync(_aiUrl.TrimEnd('/') + "/health");
+            aiOk = response.IsSuccessStatusCode;
         }
-        catch { /* ai-service chưa chạy */ }
+        catch { /* ai-service chưa chạy, timeout, hoặc lỗi kết nối */ }
 
         var healthy = dbOk; // ai-service là optional ở phase 0
         return Ok(new { status = healthy ? "ready" : "degraded", database = dbOk, databaseError = dbError, aiService = aiOk });

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 import psycopg
+from fastapi import HTTPException
 from app.config import settings
 
 router = APIRouter()
@@ -11,7 +12,8 @@ security = HTTPBearer()
 def verify_internal(token: HTTPAuthorizationCredentials = Depends(security)):
     """Endpoint nội bộ: FastAPI gọi từ pos-api, xác nhận bằng token nội bộ."""
     if token.credentials != settings.internal_token:
-        raise RuntimeError("internal token mismatch")
+        # P0: token sai → 401 Unauthorized (chuẩn REST), không RuntimeError→500
+        raise HTTPException(status_code=401, detail="Internal token mismatch")
     return token
 
 

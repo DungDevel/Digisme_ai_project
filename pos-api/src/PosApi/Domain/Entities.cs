@@ -316,8 +316,10 @@ public class StockIn
 {
     public int Id { get; set; }
     public string Code { get; set; } = string.Empty;      // PHNK-...
-    public int SupplierInvoiceId { get; set; }
-    public SupplierInvoice SupplierInvoice { get; set; } = null!;
+    /// P0-5: nullable — luồng OCR có thể tạo StockIn chưa gắn invoice NCC (hoặc nhập kho thủ công).
+    /// Trước đây int non-nullable + OnDelete(SetNull) = mâu thuẫn (SetNull trên cột NOT NULL).
+    public int? SupplierInvoiceId { get; set; }
+    public SupplierInvoice? SupplierInvoice { get; set; }
     public string? SupplierName { get; set; }
     public decimal Total { get; set; }
     public string? Note { get; set; }

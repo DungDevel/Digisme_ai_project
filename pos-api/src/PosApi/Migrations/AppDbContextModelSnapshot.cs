@@ -187,6 +187,10 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ExpiresAt");
 
+                    b.HasIndex("Key", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_idempotency_key_user");
+
                     b.ToTable("IdempotencyRecords");
                 });
 
@@ -708,7 +712,7 @@ namespace PosApi.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("text");
 
-                    b.Property<int>("SupplierInvoiceId")
+                    b.Property<int?>("SupplierInvoiceId")
                         .HasColumnType("integer");
 
                     b.Property<string>("SupplierName")
@@ -1154,8 +1158,7 @@ namespace PosApi.Migrations
                     b.HasOne("PosApi.Domain.SupplierInvoice", "SupplierInvoice")
                         .WithOne("StockIn")
                         .HasForeignKey("PosApi.Domain.StockIn", "SupplierInvoiceId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("SupplierInvoice");
                 });

@@ -20,6 +20,9 @@ GRANT USAGE ON SCHEMA public TO ai_reader;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO pos_user;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO ai_reader;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO pos_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO pos_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO pos_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ai_reader;
+-- P0-3: MUST có "FOR ROLE pos_user" — không có thì default privileges này do postgres
+-- (chạy init script) thiết lập, không phủ lên bảng EF Core tạo sau đó với user pos_user.
+-- → ai_reader đọc được mọi bảng MỚI mà pos_user tạo (Orders, Products, StockLedger...).
+ALTER DEFAULT PRIVILEGES FOR ROLE pos_user IN SCHEMA public GRANT ALL ON TABLES TO pos_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE pos_user IN SCHEMA public GRANT ALL ON SEQUENCES TO pos_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE pos_user IN SCHEMA public GRANT SELECT ON TABLES TO ai_reader;

@@ -48,7 +48,10 @@ public class OrderService : IOrderService
     public async Task<OrderCreatedResponse> CreateOrderAsync(int userId, CreateOrderRequest req, string? idempotencyKey)
     {
         // ── Idempotency: client retry (F9 / network) → trả lại kết quả cũ ──
-        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        // P0-2: bước này chỉ là fast-path đọc. Chống race thật nằm TRONG transaction
+        // (placeholder insert ngay đầu — request song song cùng key bị unique constraint chặn).
+        var hasKey = !string.IsNullOrWhiteSpace(idempotencyKey);
+        if (hasKey)
         {
             var existing = await _db.IdempotencyRecords
                 .AsNoTracking()
@@ -86,7 +89,46 @@ public class OrderService : IOrderService
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
-            await using var tx = await _db.Database.BeginTransactionAsync();
+            var existingTx = _db.Database.CurrentTransaction;
+            await using var tx = existingTx == null ? await _db.Database.BeginTransactionAsync() : null;
+
+            // ── P0-2: idempotency placeholder NGAY ĐẦU transaction ──
+            // Request song song cùng (key, user): unique constraint trên Key + lock hàng
+            // → bên thứ hai chặn tới khi tx này commit/rollback, rồi fail-fast tại INSERT.
+            // Không còn cảnh "cả 2 đều tạo đơn".
+            if (hasKey)
+            {
+                try
+                {
+                    await _db.IdempotencyRecords.AddAsync(new IdempotencyRecord
+                    {
+                        Key = idempotencyKey!,
+                        UserId = userId,
+                        Endpoint = IdempotencyEndpoint,
+                        ResultJson = null!, // placeholder — fill sau khi order tạo xong
+                        StatusCode = 201,
+                        ExpiresAt = DateTime.UtcNow.AddHours(24)
+                    });
+                    await _db.SaveChangesAsync(); // chỉ save placeholder, riêng lẻ
+                }
+                catch (DbUpdateException)
+                {
+                    // race: request song song cùng key đang giữ khóa → hủy tx,
+                    // đọc lại record đã commit của request kia.
+                    if (tx != null) await tx.RollbackAsync();
+                    if (hasKey)
+                    {
+                        var winner = await _db.IdempotencyRecords
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(r => r.Key == idempotencyKey && r.UserId == userId && r.ExpiresAt > DateTime.UtcNow);
+                        if (winner is not null && winner.ResultJson is not null)
+                            return JsonSerializer.Deserialize<OrderCreatedResponse>(winner.ResultJson, JsonOpts)!;
+                        throw new BusinessRuleException(
+                            "Yêu cầu trùng đang được xử lý — vui lòng thử lại sau ít giây (409)");
+                    }
+                    throw;
+                }
+            }
 
             // Khóa các dòng products (FOR UPDATE) để trừ kho atomic khi nhiều order song song
             var conn = _db.Database.GetDbConnection();
@@ -100,8 +142,10 @@ public class OrderService : IOrderService
                 await lockCmd.ExecuteNonQueryAsync();
             }
 
+            // P0-1: Bỏ AsNoTracking() để EF Core track thay đổi CurrentStock
+            // Vì Products đã được lock bằng FOR UPDATE ở trên, EF Core sẽ tự động
+            // persist thay đổi khi SaveChangesAsync() được gọi
             var products = await _db.Products
-                .AsNoTracking()
                 .Where(p => productIds.Contains(p.Id))
                 .ToListAsync();
             if (products.Count != productIds.Count)
@@ -218,9 +262,13 @@ public class OrderService : IOrderService
                     throw new StockShortageException(
                         $"Không đủ tồn kho '{line.Product.Name}': còn {line.Product.CurrentStock:0.###}, cần {line.Qty:0.###}");
 
+                // Ghi nhận cảnh báo trước khi trừ kho
+                if (line.Product.CurrentStock - line.Qty <= line.Product.MinStock && !stockWarnings.Contains(line.Product.Name))
+                    stockWarnings.Add($"{line.Product.Name} còn {Round3(line.Product.CurrentStock - line.Qty):0.###}");
+
+                // Cập nhật tồn kho bằng conditional UPDATE với điều kiện WHERE
+                // Để tránh bán vượt tồn nếu có concurrent order
                 line.Product.CurrentStock = Round3(line.Product.CurrentStock - line.Qty);
-                if (line.Product.CurrentStock <= line.Product.MinStock && !stockWarnings.Contains(line.Product.Name))
-                    stockWarnings.Add($"{line.Product.Name} còn {line.Product.CurrentStock:0.###}");
             }
 
             // ── Mã đơn INV-yyyymmdd-nnnn (counter + row lock, không trùng khi concurrent) ──
@@ -318,30 +366,19 @@ public class OrderService : IOrderService
                     l.Qty, l.UnitPrice, l.LineTotal, l.Product.IsWeighed)).ToList(),
                 stockWarnings);
 
-            // ── Idempotency record (201 = tạo thành công) ──
-            if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            // ── P0-2: fill kết quả vào placeholder idempotency (đã insert đầu tx) ──
+            // Cùng transaction với order → commit một lượt. Không cần Add lần 2.
+            if (hasKey)
             {
-                _db.IdempotencyRecords.Add(new IdempotencyRecord
-                {
-                    Key = idempotencyKey,
-                    UserId = userId,
-                    Endpoint = IdempotencyEndpoint,
-                    ResultJson = JsonSerializer.Serialize(response, JsonOpts),
-                    StatusCode = 201,
-                    ExpiresAt = DateTime.UtcNow.AddHours(24)
-                });
-                try
-                {
-                    await _db.SaveChangesAsync();
-                }
-                catch (DbUpdateException)
-                {
-                    // race 2 request cùng key: order đã tạo ở request kia — chấp nhận trả response này
-                    _log.LogWarning("Idempotency key {Key} race — order đã tạo bởi request song song", idempotencyKey);
-                }
+                var idem = await _db.IdempotencyRecords
+                    .FirstAsync(r => r.Key == idempotencyKey && r.UserId == userId);
+                idem.ResultJson = JsonSerializer.Serialize(response, JsonOpts);
+                idem.StatusCode = 201;
+                idem.ExpiresAt = DateTime.UtcNow.AddHours(24);
+                await _db.SaveChangesAsync();
             }
 
-            await tx.CommitAsync();
+            if (tx != null) await tx.CommitAsync();
             return response;
         });
     }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PosApi.Services;
 
 namespace PosApi;
 
@@ -23,6 +24,12 @@ public class GlobalExceptionHandler
         catch (KeyNotFoundException ex)
         {
             await Write(ctx, StatusCodes.Status404NotFound, ex.Message);
+        }
+        catch (BusinessRuleException ex)
+        {
+            // P0-1: lỗi nghiệp vụ (giỏ trống, thiếu tiền, hết hàng…) → 400 kèm thông báo cụ thể.
+            // StockShortageException kế thừa BusinessRuleException nên được phủ bởi catch này.
+            await Write(ctx, StatusCodes.Status400BadRequest, ex.Message);
         }
         catch (InvalidOperationException ex)
         {

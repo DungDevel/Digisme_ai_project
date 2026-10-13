@@ -265,6 +265,9 @@ public class AppDbContext : DbContext
             e.HasKey(x => x.Key);
             e.Property(x => x.Key).HasMaxLength(128);
             e.Property(x => x.Endpoint).HasMaxLength(64);
+            // P0-2: composite unique (Key, UserId) — race idempotency theo user,
+            // cùng key khác user được phép (khách khác dùng trùng key máy client).
+            e.HasIndex(x => new { x.Key, x.UserId }).IsUnique().HasDatabaseName("ux_idempotency_key_user");
             e.HasIndex(x => x.ExpiresAt);
         });
 

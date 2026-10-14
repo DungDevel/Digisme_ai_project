@@ -157,6 +157,42 @@ Body thu nợ (`POST /api/v1/debts/{id}/pay`):
 
 ---
 
+## Shifts (Quản lý ca làm việc) — ✅
+| Method | Path | Role | Mô tả |
+|---|---|---|---|
+| POST | `/api/v1/shifts/open` | AnyRole | Mở ca làm việc mới (`openingCash`) |
+| GET | `/api/v1/shifts/current` | AnyRole | Xem ca đang mở của user hiện tại |
+| POST | `/api/v1/shifts/close` | AnyRole | Đóng ca + kiểm đếm tiền mặt (`countedCash`), tính tiền kỳ vọng và chênh lệch |
+| GET | `/api/v1/shifts` | ManagerOnly | Lịch sử ca làm việc (`?page=&pageSize=`) |
+
+---
+
+## Payments & VietQR (Thanh toán QR động) — ✅
+| Method | Path | Role | Mô tả |
+|---|---|---|---|
+| POST | `/api/v1/payments/vietqr` | AnyRole | Tạo mã VietQR động (QuickLink qua `img.vietqr.io`) gắn với đơn hàng (`orderId`) |
+| POST | `/api/v1/payments/{id}/confirm` | ManagerOnly | Xác nhận giao dịch thanh toán thủ công đối soát (Manager-Authenticated Manual Reconciliation) |
+
+---
+
+## SignalR Realtime Notifications (Sprint 4) — 🟡 (Backend Verified ✅)
+- **Hub Endpoint:** `/hubs/pos`
+- **Authentication:** JWT Bearer (truyền qua query string `?access_token=<token>` khi kết nối WebSocket).
+- **Trạng thái:** Backend Hub, NotificationService và Event Dispatcher (Orders, Payments, LowStock, Shifts) đã triển khai và kiểm thử 100%; tích hợp client frontend đang tiến hành theo lộ trình Sprint 4 (26/10 – 08/11/2026).
+- **Client Method lắng nghe:** `ReceiveNotification`
+- **Cấu trúc payload thông báo:**
+  ```json
+  {
+    "eventId": "uuid",
+    "eventType": "OrderCreated | OrderCompleted | PaymentConfirmed | LowStockAlert | ShiftOpened | ShiftClosed",
+    "occurredAtUtc": "2026-10-14T12:00:00Z",
+    "entityId": "123",
+    "message": "Nội dung thông báo tiếng Việt"
+  }
+  ```
+
+---
+
 ## M10. AI SERVICE (FastAPI) — 🟡 (Mock ✅)
 | Method | Path | Mô tả |
 |---|---|---|

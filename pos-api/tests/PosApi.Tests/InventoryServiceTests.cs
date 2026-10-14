@@ -43,6 +43,7 @@ public class InventoryServiceTests : IAsyncLifetime
         await _context.SaveChangesAsync();
     }
 
+    [Fact]
     public async Task ListInventory_ReturnsCorrectItems()
     {
         await SeedInventoryData();

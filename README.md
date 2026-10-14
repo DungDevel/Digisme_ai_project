@@ -122,6 +122,7 @@ Toàn bộ các module cốt lõi M1 đến M9 đã được triển khai và ki
 | **M7. Stock-In & OCR** | Upload hóa đơn, OCR trích xuất, review items, xác nhận nhập kho (`FOR UPDATE`, idempotency) | ✅ Hoàn thành |
 | **M8. CRM / Customers** | Tra cứu khách hàng theo SĐT (F2), tạo khách mới, tích điểm loyalty | ✅ Hoàn thành |
 | **M9. Debts** | Quản lý công nợ khách hàng, thu nợ một phần hoặc toàn bộ (`FOR UPDATE` transaction) | ✅ Hoàn thành |
+| **Shifts** | Quản lý ca làm việc (mở ca, xem ca hiện tại, đóng ca kiểm đếm tiền mặt, chênh lệch) | ✅ Hoàn thành |
 | **M10. AI Service** | FastAPI OCR & Copilot hỏi đáp dữ liệu POS | 🟡 Mock / Sẵn sàng |
 
 ---
@@ -151,4 +152,5 @@ DigiSME_AI_Project/
 
 - **Sprint 1 — ✅ Hoàn thành** — Đặt hàng (`POST /orders` engine tính giá, idempotency, row locking, trừ kho atomic) · hold/resume cart · tra/tạo khách (F2) · audit log.
 - **Sprint 2 — ✅ Hoàn thành** — Nhập kho M7 (`POST /api/v1/stock-ins`, OCR, confirm), Trả hàng M5, Quản lý kho M6, Công nợ M9.
-- **Sprint 3 (Tiếp theo)** — Báo cáo nâng cao, VietQR động, ca làm việc (shifts), SignalR realtime notifications.
+- **Sprint 3 — ✅ Hoàn thành** — Ca làm việc (`/api/v1/shifts`) · Báo cáo nâng cao (`/api/v1/reports/*`) · Thanh toán VietQR động (`/api/v1/payments/*` — tạo mã QR QuickLink, xác nhận thanh toán thủ công phân quyền `ManagerOnly`).
+- **Sprint 4 (26/10 – 08/11/2026) — 🟡 Đang triển khai / Backend Verified** — SignalR Realtime Notifications (`/hubs/pos`): Đã hoàn thiện Hub backend, event dispatcher sau transaction commit (Orders, Payments, LowStock, Shifts) và unit/integration tests; chờ tích hợp client frontend hoàn chỉnh.

@@ -17,10 +17,14 @@ public interface IInventoryService
 public class InventoryService : IInventoryService
 {
     private readonly AppDbContext _db;
+    private readonly INotificationService? _notificationService;
+    private readonly ILogger<InventoryService> _log;
 
-    public InventoryService(AppDbContext db)
+    public InventoryService(AppDbContext db, INotificationService? notificationService = null, ILogger<InventoryService>? log = null)
     {
         _db = db;
+        _notificationService = notificationService;
+        _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<InventoryService>.Instance;
     }
 
     public async Task<PagedInventoryResponse> ListInventoryAsync(int page, int pageSize, int? productId, int? categoryId)
@@ -45,7 +49,7 @@ public class InventoryService : IInventoryService
             p.Name,
             p.Barcode,
             p.CurrentStock,
-            "Piece", 
+            "Piece",
             p.CurrentStock <= p.MinStock)).ToList();
 
         return new PagedInventoryResponse(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize), items);
@@ -137,6 +141,7 @@ public class InventoryService : IInventoryService
             product.CurrentStock = newStock;
 
             var refId = $"ADJ-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
+
             _db.StockLedger.Add(new StockLedgerEntry
             {
                 ProductId = product.Id,
@@ -152,6 +157,18 @@ public class InventoryService : IInventoryService
 
             await _db.SaveChangesAsync();
             if (tx != null) await tx.CommitAsync();
+
+            if (_notificationService != null && newStock <= product.MinStock)
+            {
+                try
+                {
+                    await _notificationService.NotifyLowStockAsync(product.Id, product.Name, product.Barcode, newStock, product.MinStock);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError(ex, "Failed to dispatch LowStockAlert notification for product {ProductId}", product.Id);
+                }
+            }
 
             return true;
         });

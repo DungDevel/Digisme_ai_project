@@ -157,6 +157,41 @@ Body thu nợ (`POST /api/v1/debts/{id}/pay`):
 
 ---
 
+## Shifts (Quản lý ca làm việc) — ✅
+| Method | Path | Role | Mô tả |
+|---|---|---|---|
+| POST | `/api/v1/shifts/open` | AnyRole | Mở ca làm việc mới (`openingCash`) |
+| GET | `/api/v1/shifts/current` | AnyRole | Xem ca đang mở của user hiện tại |
+| POST | `/api/v1/shifts/close` | AnyRole | Đóng ca + kiểm đếm tiền mặt (`countedCash`), tính tiền kỳ vọng và chênh lệch |
+| GET | `/api/v1/shifts` | ManagerOnly | Lịch sử ca làm việc (`?page=&pageSize=`) |
+
+---
+
+## Payments & VietQR (Thanh toán QR động) — ✅
+| Method | Path | Role | Mô tả |
+|---|---|---|---|
+| POST | `/api/v1/payments/vietqr` | AnyRole | Tạo mã VietQR động cho đơn hàng dựa trên thông tin cài đặt cửa hàng (`orderId`) |
+| POST | `/api/v1/payments/{id}/confirm` | ManagerOnly | Xác nhận trạng thái giao dịch thanh toán (`status`, `reference`) |
+
+---
+
+## SignalR Realtime Notifications (Sprint 4) — ✅
+- **Hub Endpoint:** `/hubs/pos`
+- **Authentication:** JWT Bearer (truyền qua query string `?access_token=<token>` khi kết nối WebSocket).
+- **Client Method lắng nghe:** `ReceiveNotification`
+- **Cấu trúc payload thông báo:**
+  ```json
+  {
+    "eventId": "uuid",
+    "eventType": "OrderCreated | OrderCompleted | PaymentConfirmed | LowStockAlert | ShiftOpened | ShiftClosed",
+    "occurredAtUtc": "2026-10-14T12:00:00Z",
+    "entityId": "123",
+    "message": "Nội dung thông báo tiếng Việt"
+  }
+  ```
+
+---
+
 ## M10. AI SERVICE (FastAPI) — 🟡 (Mock ✅)
 | Method | Path | Mô tả |
 |---|---|---|

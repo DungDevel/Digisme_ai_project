@@ -38,11 +38,13 @@ public class OrderService : IOrderService
 
     private readonly AppDbContext _db;
     private readonly ILogger<OrderService> _log;
+    private readonly INotificationService? _notificationService;
 
-    public OrderService(AppDbContext db, ILogger<OrderService> log)
+    public OrderService(AppDbContext db, ILogger<OrderService> log, INotificationService? notificationService = null)
     {
         _db = db;
         _log = log;
+        _notificationService = notificationService;
     }
 
     public async Task<OrderCreatedResponse> CreateOrderAsync(int userId, CreateOrderRequest req, string? idempotencyKey)
@@ -379,6 +381,26 @@ public class OrderService : IOrderService
             }
 
             if (tx != null) await tx.CommitAsync();
+
+            try
+            {
+                if (_notificationService != null)
+                {
+                    if (isCompleted)
+                    {
+                        await _notificationService.NotifyOrderCompletedAsync(order.Id, code, total);
+                    }
+                    else
+                    {
+                        await _notificationService.NotifyOrderCreatedAsync(order.Id, code, total);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Failed to dispatch order notification for {Code}", code);
+            }
+
             return response;
         });
     }

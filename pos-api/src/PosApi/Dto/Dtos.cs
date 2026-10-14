@@ -71,3 +71,53 @@ public record InventoryAdjustRequest(decimal Amount, string Reason);
 public record StockInItemRequest(int ProductId, decimal Qty, decimal UnitCost);
 public record ConfirmStockInRequest(int InvoiceId, List<StockInItemRequest> Items, string? SupplierName, string? Note);
 public record StockInCreatedResponse(int Id, string Code, decimal Total, DateTime CreatedAt);
+
+// ── Shifts (Sprint 3) ──
+public record OpenShiftRequest(decimal OpeningCash);
+public record CloseShiftRequest(decimal CountedCash);
+public record ShiftResponse(int Id, int UserId, string Username, DateTime StartedAt, DateTime? EndedAt, string Status, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Diff);
+public record PagedShiftResponse(int Page, int PageSize, int Total, int TotalPages, List<ShiftResponse> Items);
+
+// ── Reports (Sprint 3) ──
+public record SalesReportResponse(
+    DateTime FromDate, DateTime ToDate,
+    int TotalOrders,
+    decimal Subtotal,
+    decimal Discount,
+    decimal SurchargeTotal,
+    decimal Vat,
+    decimal TotalRevenue,
+    decimal TotalPaid
+);
+
+public record TopProductReportItem(int ProductId, string ProductName, string Barcode, decimal TotalQtySold, decimal TotalRevenue);
+public record TopProductsReportResponse(DateTime FromDate, DateTime ToDate, List<TopProductReportItem> Items);
+
+public record PaymentMethodSummary(string PaymentMethod, int OrderCount, decimal TotalAmount);
+public record PaymentMethodsReportResponse(DateTime FromDate, DateTime ToDate, List<PaymentMethodSummary> Items);
+
+// ── Payments & VietQR (Sprint 3) ──
+public record GenerateVietQrRequest(int OrderId);
+public record VietQrResponse(
+    int PaymentId,
+    int OrderId,
+    string OrderCode,
+    decimal Amount,
+    string BankCode,
+    string AccountNo,
+    string AccountName,
+    string AddInfo,
+    string QrImageUrl,
+    string Status
+);
+public record ConfirmPaymentRequest(PaymentStatus Status, string? Reference);
+public record PaymentResponse(
+    int Id,
+    int OrderId,
+    string Method,
+    decimal Amount,
+    string? Reference,
+    string Status,
+    DateTime? PaidAt,
+    DateTime CreatedAt
+);

@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Services;
+using PosApi.Hubs;
 using PosApi;
 using System.Text;
 
@@ -30,6 +31,11 @@ builder.Services.AddScoped<DebtService>();
 builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IReturnService, ReturnService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IShiftService, ShiftService>();
+builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddSignalR();
 
 // ── HTTP Client cho Health Check ──
 builder.Services.AddHttpClient("AiServiceClient", client =>
@@ -46,6 +52,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtCfg.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtCfg.SecretKey)),
             ClockSkew = TimeSpan.FromSeconds(30)
+        };
+        o.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/pos"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 builder.Services.AddAuthorization(o =>
@@ -101,6 +120,7 @@ app.UseCors(o => o.SetIsOriginAllowed(_ => true).AllowAnyHeader().AllowAnyMethod
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<PosHub>("/hubs/pos");
 
 // ── Migrate + Seed ──
 using (var scope = app.Services.CreateScope())

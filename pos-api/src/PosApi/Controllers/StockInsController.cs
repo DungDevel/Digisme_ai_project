@@ -27,7 +27,8 @@ public class StockInsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> UploadInvoice([FromForm] IFormFile file)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadInvoice(IFormFile file)
     {
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
         if (userIdClaim == null) return Unauthorized();

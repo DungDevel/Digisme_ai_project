@@ -170,14 +170,15 @@ Body thu nợ (`POST /api/v1/debts/{id}/pay`):
 ## Payments & VietQR (Thanh toán QR động) — ✅
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
-| POST | `/api/v1/payments/vietqr` | AnyRole | Tạo mã VietQR động cho đơn hàng dựa trên thông tin cài đặt cửa hàng (`orderId`) |
-| POST | `/api/v1/payments/{id}/confirm` | ManagerOnly | Xác nhận trạng thái giao dịch thanh toán (`status`, `reference`) |
+| POST | `/api/v1/payments/vietqr` | AnyRole | Tạo mã VietQR động (QuickLink qua `img.vietqr.io`) gắn với đơn hàng (`orderId`) |
+| POST | `/api/v1/payments/{id}/confirm` | ManagerOnly | Xác nhận giao dịch thanh toán thủ công đối soát (Manager-Authenticated Manual Reconciliation) |
 
 ---
 
-## SignalR Realtime Notifications (Sprint 4) — ✅
+## SignalR Realtime Notifications (Sprint 4) — 🟡 (Backend Verified ✅)
 - **Hub Endpoint:** `/hubs/pos`
 - **Authentication:** JWT Bearer (truyền qua query string `?access_token=<token>` khi kết nối WebSocket).
+- **Trạng thái:** Backend Hub, NotificationService và Event Dispatcher (Orders, Payments, LowStock, Shifts) đã triển khai và kiểm thử 100%; tích hợp client frontend đang tiến hành theo lộ trình Sprint 4 (26/10 – 08/11/2026).
 - **Client Method lắng nghe:** `ReceiveNotification`
 - **Cấu trúc payload thông báo:**
   ```json

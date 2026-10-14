@@ -152,5 +152,5 @@ DigiSME_AI_Project/
 
 - **Sprint 1 — ✅ Hoàn thành** — Đặt hàng (`POST /orders` engine tính giá, idempotency, row locking, trừ kho atomic) · hold/resume cart · tra/tạo khách (F2) · audit log.
 - **Sprint 2 — ✅ Hoàn thành** — Nhập kho M7 (`POST /api/v1/stock-ins`, OCR, confirm), Trả hàng M5, Quản lý kho M6, Công nợ M9.
-- **Sprint 3 (Hoàn thành)** — Ca làm việc (`/api/v1/shifts`) ✅; Báo cáo nâng cao (`/api/v1/reports/*`) ✅; Thanh toán VietQR động (`/api/v1/payments/*`) ✅.
-- **Sprint 4 (Hoàn thành)** — SignalR Realtime Notifications (`/hubs/pos`) ✅ — phát thông báo real-time sau khi transaction commit (Orders, Payments/VietQR, LowStock inventory alerts, Shifts).
+- **Sprint 3 — ✅ Hoàn thành** — Ca làm việc (`/api/v1/shifts`) · Báo cáo nâng cao (`/api/v1/reports/*`) · Thanh toán VietQR động (`/api/v1/payments/*` — tạo mã QR QuickLink, xác nhận thanh toán thủ công phân quyền `ManagerOnly`).
+- **Sprint 4 (26/10 – 08/11/2026) — 🟡 Đang triển khai / Backend Verified** — SignalR Realtime Notifications (`/hubs/pos`): Đã hoàn thiện Hub backend, event dispatcher sau transaction commit (Orders, Payments, LowStock, Shifts) và unit/integration tests; chờ tích hợp client frontend hoàn chỉnh.

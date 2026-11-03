@@ -94,6 +94,7 @@ public class OrderServiceTests
     {
         var (context, tx) = _fixture.CreateContextWithTransaction();
         var (userId, product) = await SeedUserAndProduct(context, 10m);
+        var ordersBefore = await context.Orders.CountAsync();
 
         var req = new CreateOrderRequest(
             CustomerId: null,
@@ -119,10 +120,10 @@ public class OrderServiceTests
         var updatedProduct = await context.Products.FindAsync(product.Id);
         Assert.Equal(10m, updatedProduct!.CurrentStock);
 
-        var orderCount = await context.Orders.CountAsync();
-        Assert.Equal(0, orderCount);
+        var ordersAfter = await context.Orders.CountAsync();
+        Assert.Equal(ordersBefore, ordersAfter);
 
-        var ledgerCount = await context.StockLedger.CountAsync();
+        var ledgerCount = await context.StockLedger.CountAsync(l => l.ProductId == product.Id);
         Assert.Equal(0, ledgerCount);
 
         await tx.RollbackAsync();

@@ -138,12 +138,12 @@ tmSales là phần mềm quản lý kinh doanh cho SME và hộ kinh doanh, gồ
 | VietQR | Sinh chuỗi EMVCo, `simulate`, đóng đơn khi paid | Poll thật / webhook ngân hàng |
 
 ### 2.4. Việc kỹ thuật phải xử lý
-**Bug P0 (tuần đầu):**
-1. `GlobalExceptionHandler` chưa bắt `BusinessRuleException` / `StockShortageException` → lỗi nghiệp vụ trả 500 thay vì 400.
-2. Idempotency record lưu trước khi commit → có thể tạo đơn trùng.
-3. `ai_reader` không đọc được bảng do thiếu `FOR ROLE pos_user` → chặn mọi tính năng AI đọc DB.
-4. Không có đường trả nợ (`Debt` kẹt `Open`) → cần `POST /debts/{id}/pay`.
-5. FK `StockIn.SupplierInvoiceId` cấu hình mâu thuẫn (ảnh hưởng luồng OCR).
+**Bug P0 (tuần đầu):** — 5/5 đã có bản sửa trong code (đối chiếu 01/11/2026):
+1. ✅ `GlobalExceptionHandler` bắt `BusinessRuleException`/`StockShortageException` → 400 (`GlobalExceptionHandler.cs:30`).
+2. ✅ Idempotency placeholder đặt **đầu transaction**, fill cùng commit — không còn lưu trước commit (`OrderService.cs:97,371`; composite unique `AppDbContext.cs:268`).
+3. ✅ Đã thêm `FOR ROLE pos_user` — `ai_reader` đọc được bảng EF (`db/init/001_roles.sql:23`).
+4. ✅ `POST /api/v1/debts/{id}/pay` — `Debt` không kẹt `Open` (`DebtsController.cs:73`, `DebtService.cs:8`).
+5. ✅ FK `StockIn.SupplierInvoiceId` nullable + `SetNull` — hợp luồng OCR (`Entities.cs:319`, `AppDbContext.cs:231`).
 
 **P1 / P2:** trigger chặn sửa/xóa `StockLedger` và `PosLog`, tìm kiếm bỏ dấu, ép ca, giới hạn `unitPrice` do client gửi, rate limit auth; trước khi nộp bài: tắt trả mã reset trong response, khóa CORS, đưa secret ra biến môi trường, sửa salt/so sánh hash.
 

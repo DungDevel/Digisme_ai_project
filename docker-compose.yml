@@ -24,6 +24,7 @@ services:
     container_name: digism_pos_api
     environment:
       ASPNETCORE_URLS: "http://0.0.0.0:8000"
+      ASPNETCORE_ENVIRONMENT: "Development"
       ConnectionStrings__PosDb: "Host=postgres;Port=5432;Database=digism_pos;Username=pos_user;Password=pos_pass"
       Jwt__Issuer: "DigiSME.PosApi"
       Jwt__Audience: "DigiSME.Frontend"

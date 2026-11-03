@@ -109,8 +109,9 @@ public class StockInServiceTests
         Assert.Equal(res1.Id, res2.Id);
 
         // Verify only one StockIn was created
+        var stockInsBefore = await context.StockIns.CountAsync();
         var count = await context.StockIns.CountAsync();
-        Assert.Equal(1, count);
+        Assert.Equal(stockInsBefore + 1, count);
 
         await tx.RollbackAsync();
     }

@@ -1,0 +1,42 @@
+Test run for E:\DigiSME_AI_Project\pos-api\tests\PosApi.Tests\bin\Debug\net8.0\PosApi.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+The following Tests are available:
+    PosApi.Tests.DebtServiceTests.ApplyPayment_FullPayment_SetsSettledStatus
+    PosApi.Tests.DebtServiceTests.ApplyPayment_PartialPayment_SetsPartiallyPaidStatus
+    PosApi.Tests.DebtServiceTests.ApplyPayment_ExceedsRemaining_ThrowsException
+    PosApi.Tests.DebtServiceTests.ApplyPayment_AlreadySettled_ThrowsException
+    PosApi.Tests.DebtServiceTests.ApplyPayment_ZeroOrNegativeAmount_ThrowsException
+    PosApi.Tests.DebtServiceTests.ApplyPayment_WritesPosLog
+    PosApi.Tests.DebtServiceTests.ApplyPayment_MultiplePayments_StatusUpdatesCorrectly
+    PosApi.Tests.DebtServiceTests.ApplyPayment_PartialPayment_FractionalAmount
+    PosApi.Tests.InventoryServiceIntegrationTests.AdjustStock_Increase_UpdatesStockAndLedger
+    PosApi.Tests.InventoryServiceIntegrationTests.AdjustStock_Decrease_UpdatesStockAndLedger
+    PosApi.Tests.InventoryServiceIntegrationTests.AdjustStock_NegativeResult_ThrowsBusinessRuleException_AndRollsBack
+    PosApi.Tests.InventoryServiceIntegrationTests.AdjustStock_InvalidProduct_ThrowsKeyNotFoundException
+    PosApi.Tests.InventoryServiceIntegrationTests.AdjustStock_ZeroAmount_ThrowsBusinessRuleException
+    PosApi.Tests.InventoryServiceIntegrationTests.AdjustStock_EmptyReason_ThrowsBusinessRuleException
+    PosApi.Tests.InventoryServiceTests.ListInventory_ReturnsCorrectItems
+    PosApi.Tests.InventoryServiceTests.ListLowStock_ReturnsItemsWhenStockBelowMin
+    PosApi.Tests.InventoryServiceTests.GetProductStockHistory_ReturnsHistory
+    PosApi.Tests.InventoryServiceTests.AdjustStock_PositiveDelta_IncreasesStock
+    PosApi.Tests.OrderServiceTests.CreateOrderAsync_Success_ReducesStockCorrectly
+    PosApi.Tests.OrderServiceTests.CreateOrderAsync_InsufficientStock_ThrowsException
+    PosApi.Tests.OrderServiceTests.CreateOrderAsync_Idempotency_Key_DoesNotDoubleStockDeduction
+    PosApi.Tests.OrderServiceTests.CreateOrderAsync_LedgerBalance_CorrectlyRecordsPostTransactionBalance
+    PosApi.Tests.PaymentServiceTests.GenerateVietQrAsync_CreatesPaymentAndReturnsUrl
+    PosApi.Tests.PaymentServiceTests.ConfirmPaymentAsync_UpdatesPaymentAndOrderToPaid
+    PosApi.Tests.ReportServiceTests.GetSalesReportAsync_CalculatesCorrectly
+    PosApi.Tests.ReportServiceTests.GetTopProductsAsync_GroupsByProductAndRanksByRevenue
+    PosApi.Tests.ReturnServiceTests.CreateReturnAsync_Success_IncreasesStockAndRecordsReturn
+    PosApi.Tests.ReturnServiceTests.CreateReturnAsync_ExceedsOriginalQty_ThrowsException
+    PosApi.Tests.ReturnServiceTests.CreateReturnAsync_MultipleReturns_AccumulatesReturnedQty
+    PosApi.Tests.ReturnServiceTests.CreateReturnAsync_InvalidOrderItem_ThrowsException
+    PosApi.Tests.ShiftServiceTests.OpenShift_Success
+    PosApi.Tests.ShiftServiceTests.OpenShift_AlreadyOpen_ThrowsBusinessRuleException
+    PosApi.Tests.ShiftServiceTests.CloseShift_Success_CalculatesExpectedCashAndDiff
+    PosApi.Tests.StockInServiceTests.ConfirmStockIn_Success_UpdatesStockAndCreatesRecords
+    PosApi.Tests.StockInServiceTests.ConfirmStockIn_Idempotency_ReturnsSameResult
+    PosApi.Tests.StockInServiceTests.UploadAndGetInvoice_Success
+    PosApi.Tests.StockInServiceTests.RejectInvoice_Success
+    PosApi.Tests.SwaggerTests.SwaggerJson_CanBeGenerated_Successfully

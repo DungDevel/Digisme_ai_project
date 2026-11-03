@@ -1,0 +1,11 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  PosApi -> E:\DigiSME_AI_Project\pos-api\src\PosApi\bin\Debug\net8.0\PosApi.dll
+  PosApi.Tests -> E:\DigiSME_AI_Project\pos-api\tests\PosApi.Tests\bin\Debug\net8.0\PosApi.Tests.dll
+Test run for E:\DigiSME_AI_Project\pos-api\tests\PosApi.Tests\bin\Debug\net8.0\PosApi.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    38, Skipped:     0, Total:    38, Duration: 2 s - PosApi.Tests.dll (net8.0)

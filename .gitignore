@@ -76,3 +76,5 @@ Thumbs.db
 # =========================
 *.tmp
 *.temp
+pos-api/tests/PosApi.Tests/TestResults/
+pos-api/Diagnostics_Backup/

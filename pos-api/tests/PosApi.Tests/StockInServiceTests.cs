@@ -102,16 +102,21 @@ public class StockInServiceTests
         var req = new ConfirmStockInRequest(invoice.Id, new List<StockInItemRequest> { new(product.Id, 1, 10) }, "S", "N");
         var key = "idem-key-2";
 
+        var stockInsBefore = await context.StockIns.CountAsync();
+        var ledgerBefore = await context.StockLedger.CountAsync();
+
         var res1 = await service.ConfirmStockInAsync(1, req, key);
         var res2 = await service.ConfirmStockInAsync(1, req, key);
 
         Assert.Equal(res1.Code, res2.Code);
         Assert.Equal(res1.Id, res2.Id);
 
-        // Verify only one StockIn was created
-        var stockInsBefore = await context.StockIns.CountAsync();
-        var count = await context.StockIns.CountAsync();
-        Assert.Equal(stockInsBefore + 1, count);
+        // Verify only one StockIn was created and ledger entries didn't duplicate
+        var stockInsAfter = await context.StockIns.CountAsync();
+        var ledgerAfter = await context.StockLedger.CountAsync();
+
+        Assert.Equal(stockInsBefore + 1, stockInsAfter);
+        Assert.Equal(ledgerBefore + 1, ledgerAfter);
 
         await tx.RollbackAsync();
     }

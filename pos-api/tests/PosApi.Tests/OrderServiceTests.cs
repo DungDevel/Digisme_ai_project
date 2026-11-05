@@ -194,4 +194,40 @@ public class OrderServiceTests
 
         await tx.RollbackAsync();
     }
+
+    [Fact]
+    public async Task CreateOrderAsync_NewFields_ReturnDefaultValues()
+    {
+        // chưa triển khai, xem giai đoạn B
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var (userId, product) = await SeedUserAndProduct(context, 100m);
+
+        var req = new CreateOrderRequest(
+            CustomerId: null,
+            PaymentMethod: "Cash",
+            PaidAmount: 50000m,
+            Discount: 0m,
+            Surcharges: new List<OrderSurchargeRequest>(),
+            Items: new List<OrderItemRequest>
+            {
+                new(ProductId: product.Id, UnitId: null, Qty: 1, UnitPrice: 10000m)
+            }
+        );
+
+        var loggerMock = new Mock<ILogger<OrderService>>();
+        var service = new OrderService(context, loggerMock.Object);
+
+        var result = await service.CreateOrderAsync(userId, req, null);
+
+        Assert.Equal(0m, result.VipDiscount);
+        Assert.Equal(0, result.PointsRedeemed);
+        Assert.Equal(0m, result.PointsReduction);
+        Assert.Equal(0m, result.DebtCollected);
+        Assert.NotNull(result.DebtPayments);
+        Assert.Empty(result.DebtPayments);
+        Assert.Equal("instore", result.DeliveryMethod);
+        Assert.Equal(0m, result.ShippingFee);
+
+        await tx.RollbackAsync();
+    }
 }

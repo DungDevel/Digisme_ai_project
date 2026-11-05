@@ -28,9 +28,36 @@ public record CreateOrderRequest(int? CustomerId, string PaymentMethod, decimal 
     List<OrderSurchargeRequest> Surcharges, List<OrderItemRequest> Items);
 public record OrderLineResponse(int ProductId, string ProductName, int? UnitId, string UnitName,
     decimal Qty, decimal UnitPrice, decimal LineTotal, bool IsWeighed);
-public record OrderCreatedResponse(int Id, string Code, decimal Subtotal, decimal Discount, decimal SurchargeTotal,
+/// <summary>
+/// OrderCreatedResponse — Nhóm 1 (Đơn Bán Hàng chiều sâu) bổ sung:
+///  VipDiscount        — tổng giảm giá VIP (đã cộng vào Discount)
+///  PointsRedeemed     — điểm khách đã tiêu (0 nếu không tiêu)
+///  PointsReduction    — tiền giảm tương ứng (1 điểm = 1.000đ)
+///  DebtCollected     — tổng công nợ cũ thu tại đơn
+///  DeliveryMethod    — instore | shopdelivery | carrier
+///  ShippingFee       — phí giao tính server (0 với instore)
+/// </summary>
+public record DebtPayResult(int DebtId, decimal AmountPaid, decimal RemainingAmount, string Status);
+
+/// <summary>
+/// OrderCreatedResponse — Nhóm 1 (Đơn Bán Hàng chiều sâu) bổ sung:
+///  VipDiscount        — tổng giảm giá VIP (đã cộng vào Discount)
+///  PointsRedeemed     — điểm khách đã tiêu (0 nếu không tiêu)
+///  PointsReduction    — tiền giảm tương ứng (1 điểm = 1.000đ)
+///  DebtCollected     — tổng công nợ cũ thu tại đơn
+///  DeliveryMethod    — instore | shopdelivery | carrier
+///  ShippingFee       — phí giao tính server (0 với instore)
+/// </summary>
+public record OrderCreatedResponse(
+    int Id, string Code, decimal Subtotal, decimal Discount, decimal SurchargeTotal,
     decimal Vat, decimal Total, string PaymentMethod, decimal PaidAmount, decimal Change, decimal AmountOwed,
-    string Status, int? LoyaltyEarned, DateTime CompletedAt, List<OrderLineResponse> Items, List<string> StockWarnings);
+    string Status, int? LoyaltyEarned, DateTime CompletedAt, List<OrderLineResponse> Items, List<string> StockWarnings,
+    decimal VipDiscount = 0m, int? PointsRedeemed = 0, decimal PointsReduction = 0m, decimal DebtCollected = 0m,
+    List<DebtPayResult>? DebtPayments = null,
+    string DeliveryMethod = "instore", decimal ShippingFee = 0m)
+{
+    public List<DebtPayResult> DebtPayments { get; init; } = DebtPayments ?? new();
+}
 
 // ── Hold cart (Sprint 1) ──
 public record HoldCartRequest(int? CustomerId, string? Note, List<OrderItemRequest> Items);

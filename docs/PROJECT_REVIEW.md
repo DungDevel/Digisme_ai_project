@@ -73,8 +73,9 @@
 
 ## 6. Đề xuất lộ trình 3 giai đoạn (theo `gap-analysis.md`)
 - **Ngay lập tức (1–2 ngày):**
-  - Khắc phục lỗi biên dịch `DebtPayResult` trên nhánh `feature/crud-mau`, chạy thành công `dotnet test` (bám sát Item #1 Đơn Bán Hàng chiều sâu).
-  - Làm rõ mục đích của file `AUDIT-2026-10-29.md` (đây là audit tmSales, không phải lỗi tech stack của DigiSME).
+  - Đã hoàn thành Giai đoạn A (commit `fa6afa1`: định nghĩa `DebtPayResult` và default values cho `OrderCreatedResponse`).
+  - Đã khảo sát và xác nhận test đỏ `StockInServiceTests.ConfirmStockIn_Idempotency_ReturnsSameResult` là lỗi assertion trong test (chụp `stockInsBefore` quá trễ), không phải lỗi service.
+  - Đã rà soát logic phân bổ chiết khấu VIP xuống `OrderItem.Price` để tương thích với `ReturnService`.
 - **Ngắn hạn (1–2 tuần):**
   - Thực hiện Item #2 (ADR 0001 — Supplier & CustomerGroup) và Item #3 (Phân hệ F&B).
   - Triển khai các nghiệp vụ Tài chính cơ bản (Phiếu thu/chi, Sổ quỹ).

@@ -108,7 +108,8 @@ public class StockInsController : ControllerBase
                 InvoiceId: id,
                 Items: body.Items,
                 SupplierName: body.SupplierName,
-                Note: body.Note
+                Note: body.Note,
+                SupplierId: body.SupplierId
             );
 
             var result = await _stockInService.ConfirmStockInAsync(userId, req, idempotencyKey);
@@ -143,4 +144,4 @@ public class StockInsController : ControllerBase
     }
 }
 
-public record ConfirmStockInRequestDto(List<StockInItemRequest>? Items, string? SupplierName, string? Note);
+public record ConfirmStockInRequestDto(List<StockInItemRequest>? Items, int? SupplierId, string? SupplierName, string? Note);

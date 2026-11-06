@@ -168,4 +168,74 @@ public class StockInServiceTests
 
         await tx.RollbackAsync();
     }
+
+    [Fact]
+    public async Task ConfirmStockIn_WithValidSupplierId_Success()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var logger = new Mock<ILogger<StockInService>>();
+        var service = new StockInService(context, logger.Object);
+
+        var category = new Category { Name = "Cat " + Guid.NewGuid() };
+        context.Categories.Add(category);
+        await context.SaveChangesAsync();
+
+        var product = new Product { Name = "Prod", Barcode = "P1", CategoryId = category.Id, CurrentStock = 10, IsActive = true };
+        context.Products.Add(product);
+
+        var supplier = new Supplier { Code = "SUP-001", Name = "Valid Supplier", IsActive = true };
+        context.Suppliers.Add(supplier);
+
+        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+        context.SupplierInvoices.Add(invoice);
+        await context.SaveChangesAsync();
+
+        var req = new ConfirmStockInRequest(
+            invoice.Id,
+            new List<StockInItemRequest> { new(product.Id, 5, 100) },
+            null,
+            "Note",
+            supplier.Id
+        );
+
+        var result = await service.ConfirmStockInAsync(1, req, "idem-sup-1");
+        Assert.NotNull(result);
+
+        var stockIn = await context.StockIns.FirstOrDefaultAsync(s => s.Code == result.Code);
+        Assert.NotNull(stockIn);
+        Assert.Equal(supplier.Id, stockIn!.SupplierId);
+        Assert.Equal("Valid Supplier", stockIn.SupplierName);
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task ConfirmStockIn_WithInvalidSupplierId_ThrowsKeyNotFoundException()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var logger = new Mock<ILogger<StockInService>>();
+        var service = new StockInService(context, logger.Object);
+
+        var category = new Category { Name = "Cat " + Guid.NewGuid() };
+        context.Categories.Add(category);
+        await context.SaveChangesAsync();
+
+        var product = new Product { Name = "Prod", Barcode = "P2", CategoryId = category.Id, CurrentStock = 10, IsActive = true };
+        context.Products.Add(product);
+        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+        context.SupplierInvoices.Add(invoice);
+        await context.SaveChangesAsync();
+
+        var req = new ConfirmStockInRequest(
+            invoice.Id,
+            new List<StockInItemRequest> { new(product.Id, 5, 100) },
+            null,
+            "Note",
+            99999 // non-existent supplier
+        );
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.ConfirmStockInAsync(1, req, "idem-sup-2"));
+
+        await tx.RollbackAsync();
+    }
 }

@@ -96,7 +96,7 @@ public record InventoryAdjustRequest(decimal Amount, string Reason);
 
 // ── Stock-In (M7) ──
 public record StockInItemRequest(int ProductId, decimal Qty, decimal UnitCost);
-public record ConfirmStockInRequest(int InvoiceId, List<StockInItemRequest> Items, string? SupplierName, string? Note);
+public record ConfirmStockInRequest(int InvoiceId, List<StockInItemRequest> Items, string? SupplierName, string? Note, int? SupplierId = null);
 public record StockInCreatedResponse(int Id, string Code, decimal Total, DateTime CreatedAt);
 
 // ── Shifts (Sprint 3) ──

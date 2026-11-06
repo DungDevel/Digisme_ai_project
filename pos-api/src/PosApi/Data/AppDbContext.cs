@@ -264,6 +264,8 @@ public class AppDbContext : DbContext
             e.Property(x => x.Code).HasMaxLength(32);
             e.Property(x => x.Total).HasPrecision(18, 2);
             e.Property(x => x.SupplierName).HasMaxLength(128);
+            e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.SupplierId);
         });
 
         mb.Entity<StockInItem>(e =>

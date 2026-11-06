@@ -168,11 +168,24 @@ public class StockInService : IStockInService
             // ── Generate StockIn Code (PHNK-yyyyMMdd-nnnn) ──
             var stockInCode = $"PHNK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
 
+            int? supplierId = null;
+            string? supplierName = req.SupplierName ?? (invoice.OcrResultJson != null ? "OCR extracted" : "Unknown");
+
+            if (req.SupplierId.HasValue)
+            {
+                var supplier = await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == req.SupplierId.Value && s.IsActive);
+                if (supplier == null)
+                    throw new KeyNotFoundException($"Không tìm thấy nhà cung cấp với ID {req.SupplierId.Value} hoặc đã bị vô hiệu");
+                supplierId = supplier.Id;
+                supplierName = supplier.Name;
+            }
+
             var stockIn = new StockIn
             {
                 Code = stockInCode,
                 SupplierInvoiceId = req.InvoiceId,
-                SupplierName = req.SupplierName ?? (invoice.OcrResultJson != null ? "OCR extracted" : "Unknown"),
+                SupplierId = supplierId,
+                SupplierName = supplierName,
                 Total = total,
                 Note = req.Note,
                 CreatedAt = DateTime.UtcNow,

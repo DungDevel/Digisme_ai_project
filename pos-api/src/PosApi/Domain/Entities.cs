@@ -355,6 +355,8 @@ public class StockIn
     /// Trước đây int non-nullable + OnDelete(SetNull) = mâu thuẫn (SetNull trên cột NOT NULL).
     public int? SupplierInvoiceId { get; set; }
     public SupplierInvoice? SupplierInvoice { get; set; }
+    public int? SupplierId { get; set; }
+    public Supplier? Supplier { get; set; }
     public string? SupplierName { get; set; }
     public decimal Total { get; set; }
     public string? Note { get; set; }

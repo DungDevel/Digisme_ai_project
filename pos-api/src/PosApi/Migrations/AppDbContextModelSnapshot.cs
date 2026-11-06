@@ -833,6 +833,9 @@ namespace PosApi.Migrations
                     b.Property<string>("Note")
                         .HasColumnType("text");
 
+                    b.Property<int?>("SupplierId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("SupplierInvoiceId")
                         .HasColumnType("integer");
 
@@ -848,6 +851,8 @@ namespace PosApi.Migrations
 
                     b.HasIndex("Code")
                         .IsUnique();
+
+                    b.HasIndex("SupplierId");
 
                     b.HasIndex("SupplierInvoiceId")
                         .IsUnique();
@@ -1374,10 +1379,17 @@ namespace PosApi.Migrations
 
             modelBuilder.Entity("PosApi.Domain.StockIn", b =>
                 {
+                    b.HasOne("PosApi.Domain.Supplier", "Supplier")
+                        .WithMany()
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PosApi.Domain.SupplierInvoice", "SupplierInvoice")
                         .WithOne("StockIn")
                         .HasForeignKey("PosApi.Domain.StockIn", "SupplierInvoiceId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Supplier");
 
                     b.Navigation("SupplierInvoice");
                 });

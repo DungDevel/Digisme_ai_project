@@ -209,6 +209,8 @@ public class OrderItem
     public int? UnitId { get; set; }          // đơn vị đã bán (khác gốc thì có conversion)
     public decimal Qty { get; set; }          // quy về đơn vị gốc, decimal(18,3)
     public decimal UnitPrice { get; set; }    // đơn giá tại thời điểm bán (đơn vị gốc)
+    public decimal LineDiscount { get; set; } = 0m;
+    public decimal Vat { get; set; } = 0m;
     public decimal Surcharge { get; set; }
     public decimal Total { get; set; }
     public decimal ReturnedQty { get; set; }

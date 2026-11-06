@@ -61,19 +61,21 @@ public class ReturnService : IReturnService
 
             // Re-fetch items to get fresh state after lock
             var orderItems = await _db.OrderItems
+                .Include(oi => oi.Product)
                 .Where(oi => itemIds.Contains(oi.Id))
                 .ToListAsync();
 
             if (orderItems.Count != req.Items.Count)
                 throw new BusinessRuleException("Một hoặc nhiều món trả không thuộc đơn hàng này");
 
+            decimal totalSubtotal = order.Subtotal > 0 ? order.Subtotal : order.Items.Sum(x => x.UnitPrice * x.Qty);
             decimal totalReturnedAmount = 0m;
             var returnItems = new List<ReturnItem>();
 
             foreach (var reqItem in req.Items)
             {
                 var oi = orderItems.First(x => x.Id == reqItem.OrderItemId);
-                
+
                 if (reqItem.Qty <= 0)
                     throw new BusinessRuleException($"Số lượng trả món {oi.Product.Name} phải lớn hơn 0");
 
@@ -81,10 +83,25 @@ public class ReturnService : IReturnService
                 if (oi.ReturnedQty + reqItem.Qty > oi.Qty)
                     throw new BusinessRuleException($"Số lượng trả vượt quá số lượng đã bán của món {oi.Product.Name} (Đã trả: {oi.ReturnedQty}, Bán: {oi.Qty})");
 
-                // Pricing: Use historic UnitPrice (base unit) saved at time of sale
-                // Note: We do not distribute total order discount/surcharge here as per identified risk.
-                // We return the actual item value.
-                var itemReturnTotal = oi.UnitPrice * reqItem.Qty;
+                var grossLine = oi.UnitPrice * oi.Qty;
+                var lineSurcharge = totalSubtotal > 0 ? Math.Round(order.SurchargeTotal * (grossLine / totalSubtotal), 2, MidpointRounding.AwayFromZero) : 0m;
+                var netLineTotal = grossLine - oi.LineDiscount + lineSurcharge;
+
+                decimal itemReturnTotal;
+                bool isFinalItemReturn = (oi.ReturnedQty + reqItem.Qty == oi.Qty);
+
+                if (isFinalItemReturn)
+                {
+                    var previouslyReturnedAmount = await _db.ReturnItems
+                        .Where(ri => ri.OrderItemId == oi.Id)
+                        .SumAsync(ri => (decimal?)ri.Total) ?? 0m;
+                    itemReturnTotal = Math.Max(0m, netLineTotal - previouslyReturnedAmount);
+                }
+                else
+                {
+                    itemReturnTotal = Math.Round((netLineTotal / oi.Qty) * reqItem.Qty, 2, MidpointRounding.AwayFromZero);
+                }
+
                 totalReturnedAmount += itemReturnTotal;
 
                 // Update OrderItem state
@@ -98,6 +115,13 @@ public class ReturnService : IReturnService
                     Total = itemReturnTotal
                 });
             }
+
+            bool isFullOrderReturn = order.Items.All(oi => oi.ReturnedQty >= oi.Qty);
+            if (isFullOrderReturn && order.ShippingFee > 0)
+            {
+                totalReturnedAmount += order.ShippingFee;
+            }
+            totalReturnedAmount = Math.Round(totalReturnedAmount, 2, MidpointRounding.AwayFromZero);
 
             // 2. Create Return Record
             var returnCode = $"PHTRA-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";

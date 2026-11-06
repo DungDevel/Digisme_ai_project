@@ -342,6 +342,9 @@ namespace PosApi.Migrations
                     b.Property<bool>("Cancelled")
                         .HasColumnType("boolean");
 
+                    b.Property<decimal>("LineDiscount")
+                        .HasColumnType("numeric");
+
                     b.Property<int>("OrderId")
                         .HasColumnType("integer");
 
@@ -370,6 +373,9 @@ namespace PosApi.Migrations
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("Vat")
+                        .HasColumnType("numeric");
 
                     b.HasKey("Id");
 

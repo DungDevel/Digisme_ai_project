@@ -41,12 +41,14 @@ public class OrderService : IOrderService
     private readonly AppDbContext _db;
     private readonly ILogger<OrderService> _log;
     private readonly INotificationService? _notificationService;
+    private readonly Microsoft.Extensions.Configuration.IConfiguration? _configuration;
 
-    public OrderService(AppDbContext db, ILogger<OrderService> log, INotificationService? notificationService = null)
+    public OrderService(AppDbContext db, ILogger<OrderService> log, INotificationService? notificationService = null, Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
         _db = db;
         _log = log;
         _notificationService = notificationService;
+        _configuration = configuration;
     }
 
     public async Task<OrderCreatedResponse> CreateOrderAsync(int userId, CreateOrderRequest req, string? idempotencyKey)
@@ -88,7 +90,7 @@ public class OrderService : IOrderService
             {
                 if (!string.IsNullOrEmpty(existing.RequestHash) && existing.RequestHash != requestHash)
                 {
-                    throw new BusinessRuleException("Idempotency-Key đã được sử dụng với nội dung request khác");
+                    throw new ConflictException("Idempotency-Key đã được dùng cho nội dung khác");
                 }
                 if (existing.ResultJson is not null)
                 {
@@ -242,9 +244,40 @@ public class OrderService : IOrderService
             }
             subtotal = RoundMoney(subtotal);
 
-            // ── Discount: chặn âm & vượt subtotal ──
+            // ── Discount & VIP: chặn âm & vượt subtotal ──
             var discount = RoundMoney(req.Discount);
-            if (discount > subtotal) throw new BusinessRuleException("discount không được vượt subtotal");
+            if (req.CustomerId is > 0)
+            {
+                var cust = await _db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == req.CustomerId);
+                if (cust != null && cust.IsVip)
+                {
+                    decimal vipPercent = 5m;
+                    if (_configuration != null)
+                    {
+                        vipPercent = _configuration.GetValue<decimal>("VipDiscountPercent", 5m);
+                    }
+                    var vipDiscount = RoundMoney(subtotal * (vipPercent / 100m));
+                    discount = RoundMoney(req.Discount + vipDiscount);
+                }
+            }
+            if (discount > subtotal) discount = subtotal;
+
+            // Distribute discount across lines proportionally
+            decimal allocatedDiscount = 0m;
+            var lineDiscounts = new decimal[lines.Count];
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (i == lines.Count - 1)
+                {
+                    lineDiscounts[i] = discount - allocatedDiscount;
+                }
+                else
+                {
+                    var proportion = subtotal > 0 ? lines[i].LineTotal / subtotal : 0m;
+                    lineDiscounts[i] = RoundMoney(discount * proportion);
+                    allocatedDiscount += lineDiscounts[i];
+                }
+            }
 
             // ── Surcharges: chỉ áp surcharge AUTO đang hiệu lực ──
             var surchargeTotal = 0m;
@@ -278,6 +311,40 @@ public class OrderService : IOrderService
             var baseAmount = subtotal - discount + surchargeTotal + shippingFee;
             var vat = RoundMoney((subtotal - discount + surchargeTotal) * storeSetting.VatRatePercent / (100m + storeSetting.VatRatePercent));
             var total = baseAmount;
+
+            decimal allocatedSurcharge = 0m;
+            var lineSurcharges = new decimal[lines.Count];
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (i == lines.Count - 1)
+                {
+                    lineSurcharges[i] = surchargeTotal - allocatedSurcharge;
+                }
+                else
+                {
+                    var proportion = subtotal > 0 ? lines[i].LineTotal / subtotal : 0m;
+                    lineSurcharges[i] = RoundMoney(surchargeTotal * proportion);
+                    allocatedSurcharge += lineSurcharges[i];
+                }
+            }
+
+            var vatBaseTotal = (subtotal - discount + surchargeTotal);
+            decimal allocatedVat = 0m;
+            var lineVats = new decimal[lines.Count];
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var lineVatBase = lines[i].LineTotal - lineDiscounts[i] + lineSurcharges[i];
+                if (i == lines.Count - 1)
+                {
+                    lineVats[i] = vat - allocatedVat;
+                }
+                else
+                {
+                    var proportion = vatBaseTotal > 0 ? lineVatBase / vatBaseTotal : 0m;
+                    lineVats[i] = RoundMoney(vat * proportion);
+                    allocatedVat += lineVats[i];
+                }
+            }
 
             // ── Tiền đưa / thừa / nợ ──
             var paid = RoundMoney(req.PaidAmount);
@@ -334,13 +401,15 @@ public class OrderService : IOrderService
                 Status = isCompleted ? OrderStatus.Completed : OrderStatus.Pending,
                 CompletedAt = isCompleted ? now : null
             };
-            order.Items = lines.Select(l => new OrderItem
+            order.Items = lines.Select((l, idx) => new OrderItem
             {
                 Order = order,
                 ProductId = l.Product.Id,
                 UnitId = l.UnitId,
                 Qty = l.Qty,
                 UnitPrice = l.UnitPrice,
+                LineDiscount = lineDiscounts[idx],
+                Vat = lineVats[idx],
                 Total = l.LineTotal
             }).ToList();
             _db.Orders.Add(order);

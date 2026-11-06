@@ -124,6 +124,26 @@ public class ReturnServiceTests
     }
 
     [Fact]
+    public async Task CreateReturnAsync_Idempotency_SameKeyDifferentContent_ThrowsConflict()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await SeedOrderData(context);
+        var loggerMock = new Mock<ILogger<ReturnService>>();
+        var service = new ReturnService(context, loggerMock.Object);
+        var orderItem = await context.OrderItems.FirstAsync();
+
+        var req1 = new ReturnRequest(orderItem.OrderId, "Reason 1", new List<ReturnItemRequest> { new(orderItem.Id, 1) });
+        var req2 = new ReturnRequest(orderItem.OrderId, "Reason 2", new List<ReturnItemRequest> { new(orderItem.Id, 2) });
+        var key = "idem-return-conflict-key";
+
+        await service.CreateReturnAsync(1, req1, key);
+
+        await Assert.ThrowsAsync<ConflictException>(() => service.CreateReturnAsync(1, req2, key));
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
     public async Task CreateReturnAsync_Success_IncreasesStockAndRecordsReturn()
     {
         var (context, tx) = _fixture.CreateContextWithTransaction();

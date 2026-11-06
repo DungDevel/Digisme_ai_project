@@ -122,6 +122,8 @@ public class Customer
     public string Name { get; set; } = string.Empty;
     public string? Address { get; set; }
     public bool IsActive { get; set; } = true;
+    /// Cờ VIP do CRM gán thủ công — floor chiết khấu VIP lên mức Gold khi Loyalty.Tier thấp hơn.
+    public bool IsVip { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public LoyaltyAccount? Loyalty { get; set; }
     public List<Debt> Debts { get; set; } = new();
@@ -183,10 +185,12 @@ public class Order
     public decimal Discount { get; set; }
     public decimal SurchargeTotal { get; set; }
     public decimal Vat { get; set; }
+    public decimal ShippingFee { get; set; } = 0m;
     public decimal Total { get; set; }
     public PaymentMethod PaymentMethod { get; set; }
     public decimal PaidAmount { get; set; }
     public decimal Change { get; set; }
+    public string DeliveryMethod { get; set; } = "instore";
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
@@ -364,6 +368,7 @@ public class IdempotencyRecord
     public string Key { get; set; } = string.Empty;          // header Idempotency-Key
     public int UserId { get; set; }
     public string Endpoint { get; set; } = string.Empty;     // vd: POST /api/v1/orders
+    public string? RequestHash { get; set; }                 // hash của request body
     public string? ResultJson { get; set; }                  // response của lần chạy đầu
     public int StatusCode { get; set; } = 200;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

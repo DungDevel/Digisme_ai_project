@@ -25,7 +25,7 @@ public record ProductBrief(int Id, string Name, string Barcode, string CategoryN
 public record OrderSurchargeRequest(int SurchargeId, decimal? OverrideValue);
 public record OrderItemRequest(int ProductId, int? UnitId, decimal Qty, decimal? UnitPrice);
 public record CreateOrderRequest(int? CustomerId, string PaymentMethod, decimal PaidAmount, decimal Discount,
-    List<OrderSurchargeRequest> Surcharges, List<OrderItemRequest> Items);
+    List<OrderSurchargeRequest> Surcharges, List<OrderItemRequest> Items, string? DeliveryMethod = "instore", decimal? ShippingFee = 0m);
 public record OrderLineResponse(int ProductId, string ProductName, int? UnitId, string UnitName,
     decimal Qty, decimal UnitPrice, decimal LineTotal, bool IsWeighed);
 /// <summary>

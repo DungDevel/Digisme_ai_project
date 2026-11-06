@@ -63,6 +63,9 @@ namespace PosApi.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsVip")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(128)
@@ -174,6 +177,10 @@ namespace PosApi.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("RequestHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ResultJson")
                         .HasColumnType("text");
 
@@ -268,6 +275,10 @@ namespace PosApi.Migrations
                     b.Property<int?>("CustomerId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("DeliveryMethod")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<decimal>("Discount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -281,6 +292,9 @@ namespace PosApi.Migrations
 
                     b.Property<int?>("ShiftId")
                         .HasColumnType("integer");
+
+                    b.Property<decimal>("ShippingFee")
+                        .HasColumnType("numeric");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");

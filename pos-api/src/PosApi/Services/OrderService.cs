@@ -441,7 +441,8 @@ public class OrderService : IOrderService
             int? loyaltyEarned = null;
             if (isCompleted && req.CustomerId is > 0)
             {
-                var loyalty = await GetOrCreateLoyaltyAsync(req.CustomerId.Value);
+                var npgTx = _db.Database.CurrentTransaction?.GetDbTransaction() as NpgsqlTransaction;
+                var loyalty = await GetOrCreateLoyaltyAsync(req.CustomerId.Value, conn, npgTx);
                 var goodsTotal = total - shippingFee;
                 int earnedPoints = (int)(goodsTotal / 1000m);
                 loyaltyEarned = earnedPoints;
@@ -555,13 +556,39 @@ public class OrderService : IOrderService
     private static int BaseUnitId(List<ProductUnit> units, int productId) =>
         units.FirstOrDefault(u => u.ProductId == productId && u.IsBase)?.UnitId ?? -1;
 
-    private async Task<LoyaltyAccount> GetOrCreateLoyaltyAsync(int customerId)
+    private async Task<LoyaltyAccount> GetOrCreateLoyaltyAsync(int customerId, System.Data.Common.DbConnection conn, NpgsqlTransaction? tx)
     {
+        // Lock loyalty account with FOR UPDATE (Lock order: Products -> LoyaltyAccounts, consistent with ReturnService)
+        using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
+        {
+            lockCmd!.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
+            if (tx != null) lockCmd.Transaction = tx;
+            lockCmd.Parameters.Add(new NpgsqlParameter("@custid", customerId));
+            await lockCmd.ExecuteNonQueryAsync();
+        }
+
         var existing = await _db.LoyaltyAccounts.FirstOrDefaultAsync(l => l.CustomerId == customerId);
         if (existing is not null) return existing;
-        var loyalty = new LoyaltyAccount { CustomerId = customerId, Points = 0, Tier = "Silver", LifetimeSpend = 0 };
-        _db.LoyaltyAccounts.Add(loyalty);
-        return loyalty;
+
+        try
+        {
+            var loyalty = new LoyaltyAccount { CustomerId = customerId, Points = 0, Tier = "Silver", LifetimeSpend = 0 };
+            _db.LoyaltyAccounts.Add(loyalty);
+            await _db.SaveChangesAsync();
+            return loyalty;
+        }
+        catch (DbUpdateException)
+        {
+            _db.ChangeTracker.Clear();
+            using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
+            {
+                lockCmd!.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
+                if (tx != null) lockCmd.Transaction = tx;
+                lockCmd.Parameters.Add(new NpgsqlParameter("@custid", customerId));
+                await lockCmd.ExecuteNonQueryAsync();
+            }
+            return await _db.LoyaltyAccounts.FirstAsync(l => l.CustomerId == customerId);
+        }
     }
 
     /// <summary>

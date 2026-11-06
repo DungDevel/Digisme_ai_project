@@ -92,6 +92,38 @@ public class ReturnServiceTests
     }
 
     [Fact]
+    public async Task CreateReturnAsync_Idempotency_ReturnsSameResult()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await SeedOrderData(context);
+        var loggerMock = new Mock<ILogger<ReturnService>>();
+        var service = new ReturnService(context, loggerMock.Object);
+        var orderItem = await context.OrderItems.FirstAsync();
+        var req = new ReturnRequest(orderItem.OrderId, "Idempotent return", new List<ReturnItemRequest>
+        {
+            new(orderItem.Id, 1)
+        });
+        var key = "idem-return-key-1";
+
+        var returnsBefore = await context.Returns.CountAsync();
+        var ledgerBefore = await context.StockLedger.CountAsync();
+
+        var res1 = await service.CreateReturnAsync(1, req, key);
+        var res2 = await service.CreateReturnAsync(1, req, key);
+
+        Assert.Equal(res1.Code, res2.Code);
+        Assert.Equal(res1.TotalReturned, res2.TotalReturned);
+
+        var returnsAfter = await context.Returns.CountAsync();
+        var ledgerAfter = await context.StockLedger.CountAsync();
+
+        Assert.Equal(returnsBefore + 1, returnsAfter);
+        Assert.Equal(ledgerBefore + 1, ledgerAfter);
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
     public async Task CreateReturnAsync_Success_IncreasesStockAndRecordsReturn()
     {
         var (context, tx) = _fixture.CreateContextWithTransaction();

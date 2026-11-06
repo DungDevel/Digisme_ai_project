@@ -83,7 +83,7 @@ Tất cả các endpoint yêu cầu role `Manager` (`Authorization: Bearer <toke
 
 | Method | Path | Mô tả |
 |---|---|---|
-| POST | `/api/v1/returns` | Tạo phiếu trả hàng (hoàn kho + ghi sổ ledger) |
+| POST | `/api/v1/returns` | Tạo phiếu trả hàng (hoàn kho + ghi sổ ledger), hỗ trợ header `Idempotency-Key` |
 | GET | `/api/v1/returns` | Lịch sử trả hàng (`?page=&pageSize=`) |
 | GET | `/api/v1/returns/{id}` | Chi tiết phiếu trả hàng |
 

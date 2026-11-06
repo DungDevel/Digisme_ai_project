@@ -36,6 +36,7 @@ builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<ICustomerGroupService, CustomerGroupService>();
 builder.Services.AddSignalR();
 
 // ── HTTP Client cho Health Check ──

@@ -64,6 +64,8 @@ public class SuppliersController : ControllerBase
         try
         {
             var updated = await _supplierService.UpdateSupplierAsync(userId, id, req);
+            if (updated is null)
+                return NotFound(new { error = $"Không tìm thấy nhà cung cấp với ID {id}" });
             return Ok(updated);
         }
         catch (BusinessRuleException ex)

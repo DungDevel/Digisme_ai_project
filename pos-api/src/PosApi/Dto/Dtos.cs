@@ -149,8 +149,13 @@ public record PaymentResponse(
     DateTime CreatedAt
 );
 
-// ── Suppliers (ADR 0001) ──
-public record SupplierCreateRequest(string? Code, string Name, string? Phone, string? Address, string? TaxCode);
-public record SupplierUpdateRequest(string Name, string? Phone, string? Address, string? TaxCode);
-public record SupplierResponse(int Id, string Code, string Name, string? Phone, string? Address, string? TaxCode, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+// ── Customer Groups & Suppliers (ADR 0001) ──
+public record CustomerGroupCreateRequest(string Code, string Name, bool IsSupplier, decimal DefaultDiscountRate, int? ParentId);
+public record CustomerGroupUpdateRequest(string Name, decimal DefaultDiscountRate, int? ParentId, bool IsSupplier);
+public record CustomerGroupResponse(int Id, string Code, string Name, bool IsSupplier, decimal DefaultDiscountRate, int? ParentId, string? ParentName, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+public record PagedCustomerGroupResponse(int Page, int PageSize, int Total, int TotalPages, List<CustomerGroupResponse> Items);
+
+public record SupplierCreateRequest(string? Code, string Name, string? Phone, string? Address, string? TaxCode, int? CustomerGroupId = null);
+public record SupplierUpdateRequest(string Name, string? Phone, string? Address, string? TaxCode, int? CustomerGroupId = null);
+public record SupplierResponse(int Id, string Code, string Name, string? Phone, string? Address, string? TaxCode, int? CustomerGroupId, string? CustomerGroupName, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 public record PagedSupplierResponse(int Page, int PageSize, int Total, int TotalPages, List<SupplierResponse> Items);

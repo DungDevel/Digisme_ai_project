@@ -19,7 +19,7 @@ public class SupplierService : ISupplierService
         if (pageSize is < 1 or > 100) pageSize = 20;
         if (page < 1) page = 1;
 
-        var query = _db.Suppliers.AsNoTracking();
+        var query = _db.Suppliers.AsNoTracking().Include(x => x.CustomerGroup).AsQueryable();
         if (!includeInactive)
         {
             query = query.Where(x => x.IsActive);
@@ -42,7 +42,7 @@ public class SupplierService : ISupplierService
 
     public async Task<SupplierResponse?> GetSupplierByIdAsync(int id)
     {
-        var supplier = await _db.Suppliers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
+        var supplier = await _db.Suppliers.AsNoTracking().Include(x => x.CustomerGroup).FirstOrDefaultAsync(x => x.Id == id);
         return supplier is null ? null : MapToResponse(supplier);
     }
 
@@ -57,6 +57,15 @@ public class SupplierService : ISupplierService
         var existsName = await _db.Suppliers.AnyAsync(x => x.IsActive && x.Name.ToLower() == trimmedName.ToLower());
         if (existsName)
             throw new BusinessRuleException("Tên nhà cung cấp đã tồn tại");
+
+        int? customerGroupId = null;
+        if (req.CustomerGroupId.HasValue)
+        {
+            var group = await _db.CustomerGroups.FirstOrDefaultAsync(x => x.Id == req.CustomerGroupId.Value && x.IsActive);
+            if (group is null || !group.IsSupplier)
+                throw new BusinessRuleException("Nhóm nhà cung cấp không tồn tại hoặc không hợp lệ");
+            customerGroupId = group.Id;
+        }
 
         string code;
         if (!string.IsNullOrWhiteSpace(req.Code))
@@ -80,22 +89,31 @@ public class SupplierService : ISupplierService
             Phone = string.IsNullOrWhiteSpace(req.Phone) ? null : req.Phone.Trim(),
             Address = string.IsNullOrWhiteSpace(req.Address) ? null : req.Address.Trim(),
             TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim(),
+            CustomerGroupId = customerGroupId,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
 
-        _db.Suppliers.Add(supplier);
-        PosLogService.Write(_db, "SUPPLIER_CREATED", userId, "supplier", supplier.Code);
-        await _db.SaveChangesAsync();
+        try
+        {
+            _db.Suppliers.Add(supplier);
+            PosLogService.Write(_db, "SUPPLIER_CREATED", userId, "supplier", supplier.Code);
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            throw new BusinessRuleException("Mã nhà cung cấp đã tồn tại");
+        }
 
+        await _db.Entry(supplier).Reference(x => x.CustomerGroup).LoadAsync();
         return MapToResponse(supplier);
     }
 
-    public async Task<SupplierResponse> UpdateSupplierAsync(int userId, int id, SupplierUpdateRequest req)
+    public async Task<SupplierResponse?> UpdateSupplierAsync(int userId, int id, SupplierUpdateRequest req)
     {
-        var supplier = await _db.Suppliers.FirstOrDefaultAsync(x => x.Id == id);
+        var supplier = await _db.Suppliers.Include(x => x.CustomerGroup).FirstOrDefaultAsync(x => x.Id == id);
         if (supplier is null)
-            throw new BusinessRuleException("Không tìm thấy nhà cung cấp");
+            return null;
 
         if (string.IsNullOrWhiteSpace(req.Name))
             throw new BusinessRuleException("Tên nhà cung cấp bắt buộc");
@@ -107,15 +125,33 @@ public class SupplierService : ISupplierService
         if (existsName)
             throw new BusinessRuleException("Tên nhà cung cấp đã tồn tại");
 
+        int? customerGroupId = null;
+        if (req.CustomerGroupId.HasValue)
+        {
+            var group = await _db.CustomerGroups.FirstOrDefaultAsync(x => x.Id == req.CustomerGroupId.Value && x.IsActive);
+            if (group is null || !group.IsSupplier)
+                throw new BusinessRuleException("Nhóm nhà cung cấp không tồn tại hoặc không hợp lệ");
+            customerGroupId = group.Id;
+        }
+
         supplier.Name = trimmedName;
         supplier.Phone = string.IsNullOrWhiteSpace(req.Phone) ? null : req.Phone.Trim();
         supplier.Address = string.IsNullOrWhiteSpace(req.Address) ? null : req.Address.Trim();
         supplier.TaxCode = string.IsNullOrWhiteSpace(req.TaxCode) ? null : req.TaxCode.Trim();
+        supplier.CustomerGroupId = customerGroupId;
         supplier.UpdatedAt = DateTime.UtcNow;
 
-        PosLogService.Write(_db, "SUPPLIER_UPDATED", userId, "supplier", supplier.Code);
-        await _db.SaveChangesAsync();
+        try
+        {
+            PosLogService.Write(_db, "SUPPLIER_UPDATED", userId, "supplier", supplier.Code);
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            throw new BusinessRuleException("Mã nhà cung cấp đã tồn tại");
+        }
 
+        await _db.Entry(supplier).Reference(x => x.CustomerGroup).LoadAsync();
         return MapToResponse(supplier);
     }
 
@@ -157,7 +193,15 @@ public class SupplierService : ISupplierService
         return $"NCC-{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}";
     }
 
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+    {
+        if (ex.InnerException is Npgsql.PostgresException pgEx && pgEx.SqlState == "23505")
+            return true;
+        var msg = ex.InnerException?.Message ?? ex.Message;
+        return msg.Contains("duplicate key", StringComparison.OrdinalIgnoreCase) || msg.Contains("unique constraint", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static SupplierResponse MapToResponse(Supplier s) => new(
-        s.Id, s.Code, s.Name, s.Phone, s.Address, s.TaxCode, s.IsActive, s.CreatedAt, s.UpdatedAt
+        s.Id, s.Code, s.Name, s.Phone, s.Address, s.TaxCode, s.CustomerGroupId, s.CustomerGroup?.Name, s.IsActive, s.CreatedAt, s.UpdatedAt
     );
 }

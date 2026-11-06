@@ -33,6 +33,8 @@ public class AppDbContext : DbContext
     public DbSet<StoreSetting> StoreSettings => Set<StoreSetting>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<InvoiceDayCounter> InvoiceDayCounters => Set<InvoiceDayCounter>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<CustomerGroup> CustomerGroups => Set<CustomerGroup>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -73,7 +75,6 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.Unit).WithMany().HasForeignKey(x => x.UnitId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.ConversionRate).HasPrecision(18, 4);
             e.Property(x => x.Barcode).HasMaxLength(64);
-            // Barcode riêng cho đơn vị đóng gói — unique, ignore null (1 barcode chỉ trỏ 1 product/unit)
             e.HasIndex(x => x.Barcode).IsUnique().HasDatabaseName("ix_product_units_barcode");
         });
 
@@ -88,7 +89,6 @@ public class AppDbContext : DbContext
         mb.Entity<Product>(e =>
         {
             e.HasIndex(x => x.Name);
-            // Index unique cho query barcode nhanh < 50ms
             e.HasIndex(x => x.Barcode).IsUnique().HasDatabaseName("ix_products_barcode");
             e.Property(x => x.Name).HasMaxLength(256);
             e.Property(x => x.Barcode).HasMaxLength(64);
@@ -107,6 +107,24 @@ public class AppDbContext : DbContext
             e.HasIndex(x => x.Phone).IsUnique();
             e.Property(x => x.Phone).HasMaxLength(16);
             e.Property(x => x.Name).HasMaxLength(128);
+            e.HasOne(x => x.CustomerGroup)
+                .WithMany(x => x.Customers)
+                .HasForeignKey(x => x.CustomerGroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── Customer Group ──
+        mb.Entity<CustomerGroup>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(50).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.DefaultDiscountRate).HasPrecision(5, 2);
+            e.HasOne(x => x.Parent)
+                .WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         mb.Entity<LoyaltyAccount>(e =>
@@ -275,8 +293,6 @@ public class AppDbContext : DbContext
             e.Property(x => x.Key).HasMaxLength(128);
             e.Property(x => x.Endpoint).HasMaxLength(64);
             e.Property(x => x.RequestHash).HasMaxLength(64);
-            // P0-2: composite unique (Key, UserId) — race idempotency theo user,
-            // cùng key khác user được phép (khách khác dùng trùng key máy client).
             e.HasIndex(x => new { x.Key, x.UserId }).IsUnique().HasDatabaseName("ux_idempotency_key_user");
             e.HasIndex(x => x.ExpiresAt);
         });
@@ -287,6 +303,22 @@ public class AppDbContext : DbContext
             e.ToTable("invoice_day_counter");
             e.HasKey(x => x.Day);
             e.Property(x => x.Day).HasMaxLength(10);
+        });
+
+        // ── Supplier ──
+        mb.Entity<Supplier>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Phone).HasMaxLength(32);
+            e.Property(x => x.Address).HasMaxLength(256);
+            e.Property(x => x.TaxCode).HasMaxLength(64);
+            e.HasOne(x => x.CustomerGroup)
+                .WithMany(x => x.Suppliers)
+                .HasForeignKey(x => x.CustomerGroupId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

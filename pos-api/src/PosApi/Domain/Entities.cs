@@ -124,6 +124,8 @@ public class Customer
     public bool IsActive { get; set; } = true;
     /// Cờ VIP do CRM gán thủ công — floor chiết khấu VIP lên mức Gold khi Loyalty.Tier thấp hơn.
     public bool IsVip { get; set; }
+    public int? CustomerGroupId { get; set; }
+    public CustomerGroup? CustomerGroup { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public LoyaltyAccount? Loyalty { get; set; }
     public List<Debt> Debts { get; set; } = new();
@@ -370,6 +372,42 @@ public class StockInItem
     public decimal Qty { get; set; }
     public decimal UnitCost { get; set; }
     public decimal Total { get; set; }
+}
+
+// ─────────────────────────── CustomerGroup ───────────────────────────
+
+public class CustomerGroup
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // unique, manual input
+    public string Name { get; set; } = string.Empty;
+    public bool IsSupplier { get; set; }                 // false = Customer Group, true = Supplier Group
+    public decimal DefaultDiscountRate { get; set; }     // 0..100
+    public int? ParentId { get; set; }
+    public CustomerGroup? Parent { get; set; }
+    public List<CustomerGroup> Children { get; set; } = new();
+    public List<Customer> Customers { get; set; } = new();
+    public List<Supplier> Suppliers { get; set; } = new();
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}
+
+// ─────────────────────────── Supplier ───────────────────────────
+
+public class Supplier
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // VD: NCC-00001 (unique)
+    public string Name { get; set; } = string.Empty;      // Unique case-insensitive giữa các active
+    public string? Phone { get; set; }
+    public string? Address { get; set; }
+    public string? TaxCode { get; set; }
+    public int? CustomerGroupId { get; set; }
+    public CustomerGroup? CustomerGroup { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
 }
 
 // ─────────────────────────── Store setting ───────────────────────────

@@ -32,9 +32,11 @@ public class ReturnsController : ControllerBase
         if (userIdClaim == null) return Unauthorized();
         var userId = int.Parse(userIdClaim.Value);
 
+        var idempotencyKey = Request.Headers["Idempotency-Key"].FirstOrDefault();
+
         try
         {
-            var result = await _returns.CreateReturnAsync(userId, req);
+            var result = await _returns.CreateReturnAsync(userId, req, idempotencyKey);
             return CreatedAtAction(nameof(Get), new { id = (int)0 }, result); // Simplified CreatedAtAction
         }
         catch (KeyNotFoundException ex)
@@ -44,6 +46,10 @@ public class ReturnsController : ControllerBase
         catch (BusinessRuleException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (ConflictException ex)
+        {
+            return Conflict(new { error = ex.Message });
         }
     }
 

@@ -33,8 +33,21 @@ public class StockInService : IStockInService
         _log = log;
     }
 
+    private static string ComputeRequestHash(ConfirmStockInRequest req)
+    {
+        var json = JsonSerializer.Serialize(req);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        return Convert.ToHexString(hash);
+    }
+
     public async Task<StockInCreatedResponse> ConfirmStockInAsync(int userId, ConfirmStockInRequest req, string? idempotencyKey)
     {
+        if (req.Items == null || req.Items.Count == 0)
+            throw new BusinessRuleException("Danh sách mặt hàng nhập không được trống");
+
+        var requestHash = ComputeRequestHash(req);
+
         // ── Idempotency Fast-path ──
         var hasKey = !string.IsNullOrWhiteSpace(idempotencyKey);
         if (hasKey)
@@ -42,14 +55,18 @@ public class StockInService : IStockInService
             var existing = await _db.IdempotencyRecords
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Key == idempotencyKey && r.UserId == userId && r.ExpiresAt > DateTime.UtcNow);
-            if (existing is not null && existing.ResultJson is not null)
+            if (existing is not null)
             {
-                return JsonSerializer.Deserialize<StockInCreatedResponse>(existing.ResultJson, JsonOpts)!;
+                if (!string.IsNullOrEmpty(existing.RequestHash) && existing.RequestHash != requestHash)
+                {
+                    throw new ConflictException("Idempotency-Key đã được dùng cho nội dung khác");
+                }
+                if (existing.ResultJson is not null)
+                {
+                    return JsonSerializer.Deserialize<StockInCreatedResponse>(existing.ResultJson, JsonOpts)!;
+                }
             }
         }
-
-        if (req.Items == null || req.Items.Count == 0)
-            throw new BusinessRuleException("Danh sách mặt hàng nhập không được trống");
 
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -67,6 +84,7 @@ public class StockInService : IStockInService
                         Key = idempotencyKey!,
                         UserId = userId,
                         Endpoint = IdempotencyEndpoint,
+                        RequestHash = requestHash,
                         ResultJson = null!,
                         StatusCode = 201,
                         ExpiresAt = DateTime.UtcNow.AddHours(24)
@@ -168,11 +186,24 @@ public class StockInService : IStockInService
             // ── Generate StockIn Code (PHNK-yyyyMMdd-nnnn) ──
             var stockInCode = $"PHNK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
 
+            int? supplierId = null;
+            string? supplierName = req.SupplierName ?? (invoice.OcrResultJson != null ? "OCR extracted" : "Unknown");
+
+            if (req.SupplierId.HasValue)
+            {
+                var supplier = await _db.Suppliers.FirstOrDefaultAsync(s => s.Id == req.SupplierId.Value && s.IsActive);
+                if (supplier == null)
+                    throw new KeyNotFoundException($"Không tìm thấy nhà cung cấp với ID {req.SupplierId.Value} hoặc đã bị vô hiệu");
+                supplierId = supplier.Id;
+                supplierName = supplier.Name;
+            }
+
             var stockIn = new StockIn
             {
                 Code = stockInCode,
                 SupplierInvoiceId = req.InvoiceId,
-                SupplierName = req.SupplierName ?? (invoice.OcrResultJson != null ? "OCR extracted" : "Unknown"),
+                SupplierId = supplierId,
+                SupplierName = supplierName,
                 Total = total,
                 Note = req.Note,
                 CreatedAt = DateTime.UtcNow,

@@ -362,8 +362,21 @@ public class OrderService : IOrderService
                     throw new BusinessRuleException("Mua chịu (debt) bắt buộc chọn khách hàng");
             }
 
-            // ── Trừ kho + ledger entries ──
+            // ── Mã đơn INV-yyyymmdd-nnnn (counter + row lock, không trùng khi concurrent) ──
+            var code = await NextInvoiceCodeAsync();
+
+            // ── Lấy định lượng BOM cho các sản phẩm trong đơn ──
+            var orderedProductIds = lines.Select(l => l.Product.Id).ToList();
+            var recipes = await _db.ProductRecipes
+                .Include(r => r.Ingredient)
+                .Where(r => orderedProductIds.Contains(r.ProductId))
+                .ToListAsync();
+            var recipeDict = recipes.GroupBy(r => r.ProductId).ToDictionary(g => g.Key, g => g.ToList());
+
+            // ── Trừ kho + ledger entries (bao gồm BOM nguyên liệu) ──
             var stockWarnings = new List<string>();
+            var bomLedgerEntries = new List<StockLedgerEntry>();
+
             foreach (var line in lines)
             {
                 if (line.Qty > line.Product.CurrentStock)
@@ -374,13 +387,34 @@ public class OrderService : IOrderService
                 if (line.Product.CurrentStock - line.Qty <= line.Product.MinStock && !stockWarnings.Contains(line.Product.Name))
                     stockWarnings.Add($"{line.Product.Name} còn {Round3(line.Product.CurrentStock - line.Qty):0.###}");
 
-                // Cập nhật tồn kho bằng conditional UPDATE với điều kiện WHERE
-                // Để tránh bán vượt tồn nếu có concurrent order
+                // Cập nhật tồn kho thành phẩm
                 line.Product.CurrentStock = Round3(line.Product.CurrentStock - line.Qty);
-            }
 
-            // ── Mã đơn INV-yyyymmdd-nnnn (counter + row lock, không trùng khi concurrent) ──
-            var code = await NextInvoiceCodeAsync();
+                // Trừ kho nguyên liệu theo BOM nếu có
+                if (recipeDict.TryGetValue(line.Product.Id, out var prodRecipes))
+                {
+                    foreach (var recipe in prodRecipes)
+                    {
+                        var ing = recipe.Ingredient;
+                        var requiredIngQty = Round3(recipe.Qty * line.Qty);
+                        if (requiredIngQty > ing.CurrentStock)
+                            throw new StockShortageException(
+                                $"Không đủ tồn kho nguyên liệu '{ing.Name}' (BOM của '{line.Product.Name}'): còn {ing.CurrentStock:0.###}, cần {requiredIngQty:0.###}");
+
+                        ing.CurrentStock = Round3(ing.CurrentStock - requiredIngQty);
+
+                        bomLedgerEntries.Add(new StockLedgerEntry
+                        {
+                            ProductId = ing.Id,
+                            Qty = -requiredIngQty,
+                            Balance = ing.CurrentStock,
+                            RefType = LedgerRefType.Sale,
+                            RefId = code,
+                            Note = $"Tiêu hao định lượng BOM cho {line.Product.Name}"
+                        });
+                    }
+                }
+            }
 
             var isCompleted = paymentMethod is PaymentMethod.Cash or PaymentMethod.Debt;
             var order = new Order
@@ -441,7 +475,8 @@ public class OrderService : IOrderService
             int? loyaltyEarned = null;
             if (isCompleted && req.CustomerId is > 0)
             {
-                var loyalty = await GetOrCreateLoyaltyAsync(req.CustomerId.Value);
+                var npgTx = _db.Database.CurrentTransaction?.GetDbTransaction() as NpgsqlTransaction;
+                var loyalty = await GetOrCreateLoyaltyAsync(req.CustomerId.Value, conn, npgTx);
                 var goodsTotal = total - shippingFee;
                 int earnedPoints = (int)(goodsTotal / 1000m);
                 loyaltyEarned = earnedPoints;
@@ -460,7 +495,8 @@ public class OrderService : IOrderService
             }
 
             // ── Ledger + PosLog ──
-            _db.StockLedger.AddRange(lines.Select(l => new StockLedgerEntry
+            var ledgerEntries = new List<StockLedgerEntry>();
+            ledgerEntries.AddRange(lines.Select(l => new StockLedgerEntry
             {
                 ProductId = l.Product.Id,
                 Qty = -l.Qty,
@@ -469,6 +505,8 @@ public class OrderService : IOrderService
                 RefId = code,
                 Note = "Bán tại quầy"
             }));
+            ledgerEntries.AddRange(bomLedgerEntries);
+            _db.StockLedger.AddRange(ledgerEntries);
 
             PosLogService.Write(_db, "ORDER_CREATED", userId, "order", code,
                 new { total, paymentMethod = paymentMethod.ToString().ToLowerInvariant(), lines = lines.Count });
@@ -555,13 +593,39 @@ public class OrderService : IOrderService
     private static int BaseUnitId(List<ProductUnit> units, int productId) =>
         units.FirstOrDefault(u => u.ProductId == productId && u.IsBase)?.UnitId ?? -1;
 
-    private async Task<LoyaltyAccount> GetOrCreateLoyaltyAsync(int customerId)
+    private async Task<LoyaltyAccount> GetOrCreateLoyaltyAsync(int customerId, System.Data.Common.DbConnection conn, NpgsqlTransaction? tx)
     {
+        // Lock loyalty account with FOR UPDATE (Lock order: Products -> LoyaltyAccounts, consistent with ReturnService)
+        using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
+        {
+            lockCmd!.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
+            if (tx != null) lockCmd.Transaction = tx;
+            lockCmd.Parameters.Add(new NpgsqlParameter("@custid", customerId));
+            await lockCmd.ExecuteNonQueryAsync();
+        }
+
         var existing = await _db.LoyaltyAccounts.FirstOrDefaultAsync(l => l.CustomerId == customerId);
         if (existing is not null) return existing;
-        var loyalty = new LoyaltyAccount { CustomerId = customerId, Points = 0, Tier = "Silver", LifetimeSpend = 0 };
-        _db.LoyaltyAccounts.Add(loyalty);
-        return loyalty;
+
+        try
+        {
+            var loyalty = new LoyaltyAccount { CustomerId = customerId, Points = 0, Tier = "Silver", LifetimeSpend = 0 };
+            _db.LoyaltyAccounts.Add(loyalty);
+            await _db.SaveChangesAsync();
+            return loyalty;
+        }
+        catch (DbUpdateException)
+        {
+            _db.ChangeTracker.Clear();
+            using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
+            {
+                lockCmd!.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
+                if (tx != null) lockCmd.Transaction = tx;
+                lockCmd.Parameters.Add(new NpgsqlParameter("@custid", customerId));
+                await lockCmd.ExecuteNonQueryAsync();
+            }
+            return await _db.LoyaltyAccounts.FirstAsync(l => l.CustomerId == customerId);
+        }
     }
 
     /// <summary>

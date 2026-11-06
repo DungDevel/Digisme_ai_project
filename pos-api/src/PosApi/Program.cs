@@ -37,6 +37,19 @@ builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<ISupplierService, SupplierService>();
 builder.Services.AddScoped<ICustomerGroupService, CustomerGroupService>();
+builder.Services.AddScoped<IAreaService, AreaService>();
+builder.Services.AddScoped<ITableService, TableService>();
+builder.Services.AddScoped<IRoomService, RoomService>();
+builder.Services.AddScoped<IProductRecipeService, ProductRecipeService>();
+builder.Services.AddScoped<IWarehouseService, WarehouseService>();
+builder.Services.AddScoped<IWarehouseStockService, WarehouseStockService>();
+builder.Services.AddScoped<IWarehouseTransferService, WarehouseTransferService>();
+builder.Services.AddScoped<IStockTakeService, StockTakeService>();
+builder.Services.AddScoped<ISupplierReturnService, SupplierReturnService>();
+builder.Services.AddScoped<ICashVoucherService, CashVoucherService>();
+builder.Services.AddScoped<ICashFundBookService, CashFundBookService>();
+builder.Services.AddScoped<IGeneralJournalService, GeneralJournalService>();
+builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
 builder.Services.AddSignalR();
 
 // ── HTTP Client cho Health Check ──

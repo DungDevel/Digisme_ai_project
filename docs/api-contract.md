@@ -3,7 +3,7 @@
 > Tài liệu giao kèo giữa Backend (ASP.NET `pos-api` + FastAPI `ai-service`) và Frontend.
 > Mọi endpoint trả về JSON UTF-8. Lỗi chung: `{"error": "thông điệp tiếng Việt"}` + status code.
 > Auth: header `Authorization: Bearer <token>` (token từ `POST /api/v1/auth/login`).
-> Tiền tệ: số nguyên VNĐ (decimal 18,2). Thời gian: ISO 8601 UTC.
+> Tiền tệ: số nguyên VNĐ (làm tròn số nguyên đồng bằng `Math.Round(v, 0, MidpointRounding.AwayFromZero)`). Thời gian: ISO 8601 UTC.
 
 **Trạng thái legend:** ✅ = đã implement và kiểm thử | 🟡 = contract chốt, implement theo roadmap
 
@@ -83,7 +83,7 @@ Tất cả các endpoint yêu cầu role `Manager` (`Authorization: Bearer <toke
 
 | Method | Path | Mô tả |
 |---|---|---|
-| POST | `/api/v1/returns` | Tạo phiếu trả hàng (hoàn kho + ghi sổ ledger) |
+| POST | `/api/v1/returns` | Tạo phiếu trả hàng (hoàn kho + ghi sổ ledger), hỗ trợ header `Idempotency-Key` |
 | GET | `/api/v1/returns` | Lịch sử trả hàng (`?page=&pageSize=`) |
 | GET | `/api/v1/returns/{id}` | Chi tiết phiếu trả hàng |
 
@@ -167,6 +167,24 @@ Body thu nợ (`POST /api/v1/debts/{id}/pay`):
 
 ---
 
+## M10. SUPPLIERS & CUSTOMER GROUPS (Nhà cung cấp & Nhóm khách hàng / NCC — ADR 0001) — ✅
+Tất cả các endpoint yêu cầu role `Manager`.
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/v1/suppliers` | Danh sách nhà cung cấp (`?q=&page=&pageSize=&includeInactive=`) |
+| GET | `/api/v1/suppliers/{id}` | Chi tiết nhà cung cấp |
+| POST | `/api/v1/suppliers` | Tạo nhà cung cấp mới |
+| PUT | `/api/v1/suppliers/{id}` | Cập nhật nhà cung cấp |
+| DELETE | `/api/v1/suppliers/{id}` | Xóa mềm nhà cung cấp |
+| GET | `/api/v1/customer-groups` | Danh sách nhóm khách hàng/NCC (`?q=&isSupplier=&page=&pageSize=&includeInactive=`) |
+| GET | `/api/v1/customer-groups/{id}` | Chi tiết nhóm |
+| POST | `/api/v1/customer-groups` | Tạo nhóm mới |
+| PUT | `/api/v1/customer-groups/{id}` | Cập nhật nhóm |
+| DELETE | `/api/v1/customer-groups/{id}` | Xóa nhóm |
+
+---
+
 ## Payments & VietQR (Thanh toán QR động) — ✅
 | Method | Path | Role | Mô tả |
 |---|---|---|---|
@@ -198,6 +216,30 @@ Body thu nợ (`POST /api/v1/debts/{id}/pay`):
 |---|---|---|
 | POST | `/api/v1/ai/invoices/extract` | OCR trích xuất hóa đơn nhập kho |
 | POST | `/api/v1/ai/copilot/ask` | Copilot hỏi đáp dữ liệu POS bằng tiếng Việt |
+
+---
+
+## M11. F&B (Phân hệ D) — ✅
+| Method | Path | Role | Mô tả |
+|---|---|---|---|
+| GET | `/api/v1/areas` | AnyRole | Danh sách khu vực (`?q=&page=&pageSize=&includeInactive=`) |
+| POST | `/api/v1/areas` | ManagerOnly | Tạo khu vực mới |
+| PUT | `/api/v1/areas/{id}` | ManagerOnly | Cập nhật khu vực |
+| DELETE | `/api/v1/areas/{id}` | ManagerOnly | Xóa khu vực |
+| GET | `/api/v1/tables` | AnyRole | Danh sách bàn (`?areaId=&status=&page=&pageSize=&includeInactive=`) |
+| POST | `/api/v1/tables` | ManagerOnly | Tạo bàn mới |
+| PUT | `/api/v1/tables/{id}` | ManagerOnly | Cập nhật bàn |
+| PATCH | `/api/v1/tables/{id}/status` | AnyRole | Cập nhật trạng thái bàn (`available`, `occupied`, `reserved`, `locked`) |
+| POST | `/api/v1/tables/transfer?sourceTableId={id}` | AnyRole | Chuyển bàn (body: `{targetTableId}`) |
+| DELETE | `/api/v1/tables/{id}` | ManagerOnly | Xóa bàn |
+| GET | `/api/v1/rooms` | AnyRole | Danh sách phòng tính giờ (`?q=&status=&page=&pageSize=&includeInactive=`) |
+| POST | `/api/v1/rooms` | ManagerOnly | Tạo phòng tính giờ mới |
+| PUT | `/api/v1/rooms/{id}` | ManagerOnly | Cập nhật phòng |
+| POST | `/api/v1/rooms/{id}/check-in` | AnyRole | Check-in phòng (bắt đầu tính giờ) |
+| POST | `/api/v1/rooms/{id}/check-out` | AnyRole | Check-out phòng (tự động tính thời gian và thành tiền dịch vụ giờ) |
+| DELETE | `/api/v1/rooms/{id}` | ManagerOnly | Xóa phòng |
+| GET | `/api/v1/products/{productId}/recipes` | ManagerOnly | Xem danh sách định lượng BOM của sản phẩm F&B |
+| POST | `/api/v1/products/{productId}/recipes` | ManagerOnly | Cập nhật định lượng BOM (upsert danh sách nguyên liệu tiêu hao) |
 
 ---
 

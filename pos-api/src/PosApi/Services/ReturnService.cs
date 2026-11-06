@@ -9,13 +9,16 @@ namespace PosApi.Services;
 
 public interface IReturnService
 {
-    Task<ReturnResponse> CreateReturnAsync(int userId, ReturnRequest req);
+    Task<ReturnResponse> CreateReturnAsync(int userId, ReturnRequest req, string? idempotencyKey = null);
     Task<ReturnDetailResponse> GetReturnByIdAsync(int id);
     Task<PagedReturnResponse> ListReturnsAsync(int page, int pageSize);
 }
 
 public class ReturnService : IReturnService
 {
+    private static readonly System.Text.Json.JsonSerializerOptions JsonOpts = new(System.Text.Json.JsonSerializerDefaults.Web);
+    private const string IdempotencyEndpoint = "POST /api/v1/returns";
+
     private readonly AppDbContext _db;
     private readonly ILogger<ReturnService> _log;
 
@@ -25,10 +28,38 @@ public class ReturnService : IReturnService
         _log = log;
     }
 
-    public async Task<ReturnResponse> CreateReturnAsync(int userId, ReturnRequest req)
+    private static string ComputeRequestHash(ReturnRequest req)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(req);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        return Convert.ToHexString(hash);
+    }
+
+    public async Task<ReturnResponse> CreateReturnAsync(int userId, ReturnRequest req, string? idempotencyKey = null)
     {
         if (req.Items == null || req.Items.Count == 0)
             throw new BusinessRuleException("Danh sách món trả không được trống");
+
+        var requestHash = ComputeRequestHash(req);
+        var hasKey = !string.IsNullOrWhiteSpace(idempotencyKey);
+        if (hasKey)
+        {
+            var existing = await _db.IdempotencyRecords
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Key == idempotencyKey && r.UserId == userId && r.ExpiresAt > DateTime.UtcNow);
+            if (existing is not null)
+            {
+                if (!string.IsNullOrEmpty(existing.RequestHash) && existing.RequestHash != requestHash)
+                {
+                    throw new ConflictException("Idempotency-Key đã được dùng cho nội dung khác");
+                }
+                if (existing.ResultJson is not null)
+                {
+                    return System.Text.Json.JsonSerializer.Deserialize<ReturnResponse>(existing.ResultJson, JsonOpts)!;
+                }
+            }
+        }
 
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -36,7 +67,41 @@ public class ReturnService : IReturnService
             var existingTx = _db.Database.CurrentTransaction;
             await using var tx = existingTx == null ? await _db.Database.BeginTransactionAsync() : null;
 
+            if (hasKey)
+            {
+                try
+                {
+                    await _db.IdempotencyRecords.AddAsync(new IdempotencyRecord
+                    {
+                        Key = idempotencyKey!,
+                        UserId = userId,
+                        Endpoint = IdempotencyEndpoint,
+                        RequestHash = requestHash,
+                        ResultJson = null!,
+                        StatusCode = 201,
+                        ExpiresAt = DateTime.UtcNow.AddHours(24)
+                    });
+                    await _db.SaveChangesAsync();
+                }
+                catch (DbUpdateException)
+                {
+                    if (tx != null) await tx.RollbackAsync();
+                    else if (_db.Database.CurrentTransaction != null) await _db.Database.CurrentTransaction.RollbackAsync();
+                    if (hasKey)
+                    {
+                        var winner = await _db.IdempotencyRecords
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(r => r.Key == idempotencyKey && r.UserId == userId && r.ExpiresAt > DateTime.UtcNow);
+                        if (winner is not null && winner.ResultJson is not null)
+                            return System.Text.Json.JsonSerializer.Deserialize<ReturnResponse>(winner.ResultJson, JsonOpts)!;
+                        throw new BusinessRuleException("Yêu cầu trùng đang được xử lý — vui lòng thử lại sau (409)");
+                    }
+                    throw;
+                }
+            }
+
             // 1. Lock Order & OrderItems to prevent concurrency issues (Double return)
+            // Lock order: OrderItems -> LoyaltyAccounts (consistent lock order: Products -> LoyaltyAccounts)
             var order = await _db.Orders
                 .Include(o => o.Items)
                 .FirstOrDefaultAsync(o => o.Id == req.OrderId);
@@ -96,7 +161,7 @@ public class ReturnService : IReturnService
                     throw new BusinessRuleException($"Số lượng trả vượt quá số lượng đã bán của món {oi.Product.Name} (Đã trả: {oi.ReturnedQty}, Bán: {oi.Qty})");
 
                 var grossLine = oi.UnitPrice * oi.Qty;
-                var lineSurcharge = totalSubtotal > 0 ? Math.Round(order.SurchargeTotal * (grossLine / totalSubtotal), 2, MidpointRounding.AwayFromZero) : 0m;
+                var lineSurcharge = totalSubtotal > 0 ? Math.Round(order.SurchargeTotal * (grossLine / totalSubtotal), 0, MidpointRounding.AwayFromZero) : 0m;
                 var netLineTotal = grossLine - oi.LineDiscount + lineSurcharge;
 
                 decimal itemReturnTotal;
@@ -133,7 +198,7 @@ public class ReturnService : IReturnService
             {
                 totalReturnedAmount += order.ShippingFee;
             }
-            totalReturnedAmount = Math.Round(totalReturnedAmount, 2, MidpointRounding.AwayFromZero);
+            totalReturnedAmount = Math.Round(totalReturnedAmount, 0, MidpointRounding.AwayFromZero);
 
             // 2. Create Return Record
             var returnCode = $"PHTRA-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
@@ -228,9 +293,22 @@ public class ReturnService : IReturnService
                 new { orderCode = order.Code, totalReturned = totalReturnedAmount, itemsCount = returnItems.Count });
 
             await _db.SaveChangesAsync();
+
+            var response = new ReturnResponse(returnCode, totalReturnedAmount, DateTime.UtcNow);
+
+            if (hasKey)
+            {
+                var idem = await _db.IdempotencyRecords
+                    .FirstAsync(r => r.Key == idempotencyKey && r.UserId == userId);
+                idem.ResultJson = System.Text.Json.JsonSerializer.Serialize(response, JsonOpts);
+                idem.StatusCode = 201;
+                idem.ExpiresAt = DateTime.UtcNow.AddHours(24);
+                await _db.SaveChangesAsync();
+            }
+
             if (tx != null) await tx.CommitAsync();
 
-            return new ReturnResponse(returnCode, totalReturnedAmount, DateTime.UtcNow);
+            return response;
         });
     }
 

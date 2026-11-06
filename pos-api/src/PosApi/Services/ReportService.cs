@@ -10,6 +10,10 @@ public interface IReportService
     Task<SalesReportResponse> GetSalesReportAsync(DateTime? from, DateTime? to);
     Task<TopProductsReportResponse> GetTopProductsAsync(DateTime? from, DateTime? to, int top = 10);
     Task<PaymentMethodsReportResponse> GetPaymentMethodsReportAsync(DateTime? from, DateTime? to);
+    Task<TaxDeclarationReportResponse> GetTaxDeclarationAsync(DateTime? from, DateTime? to);
+    Task<AdvancedDashboardResponse> GetAdvancedDashboardAsync(DateTime? from, DateTime? to);
+    Task<SlowMovingReportResponse> GetSlowMovingProductsAsync(DateTime? from, DateTime? to);
+    Task<CashFlowReportResponse> GetCashFlowReportAsync(DateTime? from, DateTime? to);
 }
 
 public class ReportService : IReportService
@@ -46,9 +50,6 @@ public class ReportService : IReportService
         var startDate = from ?? DateTime.UtcNow.Date.AddDays(-30);
         var endDate = to ?? DateTime.UtcNow;
 
-        // EF Core 8 không translate được GroupBy composite key (Id, Name, Barcode) từ join + aggregate
-        // theo navigation trong cùng query. Báo cáo theo thời gian có giới hạn (mặc định 30 ngày),
-        // số dòng OrderItem hoàn thành là nhỏ → lấy về group phía client (thủ tục đã ghi nhận).
         var raw = await (
             from oi in _context.OrderItems
             join o in _context.Orders on oi.OrderId equals o.Id
@@ -91,5 +92,176 @@ public class ReportService : IReportService
             .ToListAsync();
 
         return new PaymentMethodsReportResponse(startDate, endDate, summaries);
+    }
+
+    public async Task<TaxDeclarationReportResponse> GetTaxDeclarationAsync(DateTime? from, DateTime? to)
+    {
+        var startDate = from ?? DateTime.UtcNow.Date.AddDays(-30);
+        var endDate = to ?? DateTime.UtcNow;
+
+        var ordersQuery = _context.Orders
+            .AsNoTracking()
+            .Where(o => o.Status == OrderStatus.Completed && o.CreatedAt >= startDate && o.CreatedAt <= endDate);
+
+        var totalSalesRevenue = await ordersQuery.SumAsync(o => (decimal?)o.Total) ?? 0m;
+        var totalOutputVat = await ordersQuery.SumAsync(o => (decimal?)o.Vat) ?? 0m;
+
+        var stockInsQuery = _context.StockIns
+            .AsNoTracking()
+            .Where(s => s.CreatedAt >= startDate && s.CreatedAt <= endDate);
+
+        var totalPurchaseAmount = await stockInsQuery.SumAsync(s => (decimal?)s.Total) ?? 0m;
+        var totalInputVat = totalPurchaseAmount * 0.1m;
+
+        return new TaxDeclarationReportResponse(
+            startDate,
+            endDate,
+            totalSalesRevenue,
+            totalOutputVat,
+            totalPurchaseAmount,
+            totalInputVat
+        );
+    }
+
+    public async Task<AdvancedDashboardResponse> GetAdvancedDashboardAsync(DateTime? from, DateTime? to)
+    {
+        var startDate = from ?? DateTime.UtcNow.Date.AddDays(-30);
+        var endDate = to ?? DateTime.UtcNow;
+
+        var salesReport = await GetSalesReportAsync(startDate, endDate);
+        var paymentMethodsReport = await GetPaymentMethodsReportAsync(startDate, endDate);
+        var topProductsReport = await GetTopProductsAsync(startDate, endDate, 10);
+
+        var lowStockProducts = await _context.Products
+            .AsNoTracking()
+            .Where(p => p.IsActive && p.CurrentStock <= p.MinStock)
+            .OrderBy(p => p.CurrentStock)
+            .Take(20)
+            .Select(p => new InventoryItemBrief(p.Id, p.Name, p.Barcode, p.CurrentStock, "Piece", true))
+            .ToListAsync();
+
+        var orderItems = await (
+            from oi in _context.OrderItems
+            join o in _context.Orders on oi.OrderId equals o.Id
+            join p in _context.Products on oi.ProductId equals p.Id
+            where o.Status == OrderStatus.Completed && o.CreatedAt >= startDate && o.CreatedAt <= endDate && !oi.Cancelled
+            select new { oi.Qty, p.CostPrice }
+        ).ToListAsync();
+
+        decimal totalCostOfGoodsSold = orderItems.Sum(x => x.Qty * x.CostPrice);
+        decimal totalRevenue = salesReport.TotalRevenue;
+        decimal grossProfit = totalRevenue - totalCostOfGoodsSold;
+        decimal grossProfitMarginPercent = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100m : 0m;
+
+        var fundBookService = new CashFundBookService(_context);
+        var cashSummary = await fundBookService.GetFundBookSummaryAsync(startDate, endDate);
+        decimal currentCashBalance = cashSummary.ClosingBalance;
+
+        return new AdvancedDashboardResponse(
+            startDate,
+            endDate,
+            totalRevenue,
+            totalCostOfGoodsSold,
+            grossProfit,
+            grossProfitMarginPercent,
+            paymentMethodsReport.Items,
+            topProductsReport.Items,
+            lowStockProducts,
+            currentCashBalance
+        );
+    }
+
+    public async Task<SlowMovingReportResponse> GetSlowMovingProductsAsync(DateTime? from, DateTime? to)
+    {
+        var startDate = from ?? DateTime.UtcNow.Date.AddDays(-30);
+        var endDate = to ?? DateTime.UtcNow;
+
+        var soldProductIds = await _context.OrderItems
+            .AsNoTracking()
+            .Join(_context.Orders, oi => oi.OrderId, o => o.Id, (oi, o) => new { oi, o })
+            .Where(x => x.o.Status == OrderStatus.Completed && x.o.CreatedAt >= startDate && x.o.CreatedAt <= endDate && !x.oi.Cancelled)
+            .Select(x => x.oi.ProductId)
+            .Distinct()
+            .ToListAsync();
+
+        var slowProducts = await _context.Products
+            .AsNoTracking()
+            .Include(p => p.Category)
+            .Where(p => p.IsActive && p.CurrentStock > 0 && !soldProductIds.Contains(p.Id))
+            .OrderByDescending(p => p.CurrentStock)
+            .Take(50)
+            .ToListAsync();
+
+        var items = slowProducts.Select(p => new SlowMovingProductItem(
+            p.Id,
+            p.CategoryId,
+            p.Category?.Name ?? "",
+            p.Name,
+            p.Barcode,
+            p.CurrentStock,
+            p.CostPrice,
+            p.CurrentStock * p.CostPrice
+        )).ToList();
+
+        return new SlowMovingReportResponse(startDate, endDate, items);
+    }
+
+    public async Task<CashFlowReportResponse> GetCashFlowReportAsync(DateTime? from, DateTime? to)
+    {
+        var startDate = from ?? DateTime.UtcNow.Date.AddDays(-30);
+        var endDate = to ?? DateTime.UtcNow;
+
+        var fundBookService = new CashFundBookService(_context);
+        var summary = await fundBookService.GetFundBookSummaryAsync(startDate, endDate);
+
+        var vouchers = await _context.CashVouchers
+            .AsNoTracking()
+            .Where(v => v.Status == CashVoucherStatus.Confirmed && v.CreatedAt >= startDate && v.CreatedAt <= endDate)
+            .OrderByDescending(v => v.CreatedAt)
+            .ToListAsync();
+
+        var customerIds = vouchers.Where(x => x.PartnerType == PartnerType.Customer && x.PartnerId.HasValue).Select(x => x.PartnerId!.Value).Distinct().ToList();
+        var supplierIds = vouchers.Where(x => x.PartnerType == PartnerType.Supplier && x.PartnerId.HasValue).Select(x => x.PartnerId!.Value).Distinct().ToList();
+
+        var customers = await _context.Customers.Where(c => customerIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name);
+        var suppliers = await _context.Suppliers.Where(s => supplierIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, s => s.Name);
+
+        var voucherResponses = vouchers.Select(v =>
+        {
+            string? partnerName = null;
+            if (v.PartnerType == PartnerType.Customer && v.PartnerId.HasValue)
+                partnerName = customers.GetValueOrDefault(v.PartnerId.Value);
+            else if (v.PartnerType == PartnerType.Supplier && v.PartnerId.HasValue)
+                partnerName = suppliers.GetValueOrDefault(v.PartnerId.Value);
+
+            return new CashVoucherResponse(
+                v.Id,
+                v.Code,
+                v.Type,
+                v.PartnerType,
+                v.PartnerId,
+                partnerName,
+                v.Amount,
+                v.PaymentMethod,
+                v.ReferenceType,
+                v.ReferenceId,
+                v.ShiftId,
+                v.Note,
+                v.Status,
+                v.CreatedBy,
+                v.CreatedAt,
+                v.ConfirmedAt
+            );
+        }).ToList();
+
+        return new CashFlowReportResponse(
+            startDate,
+            endDate,
+            summary.OpeningBalance,
+            summary.TotalReceipts,
+            summary.TotalPayments,
+            summary.ClosingBalance,
+            voucherResponses
+        );
     }
 }

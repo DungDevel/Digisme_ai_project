@@ -79,38 +79,19 @@ public class DebtsController : ControllerBase
 
         var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
 
-        var strategy = _db.Database.CreateExecutionStrategy();
-        var result = await strategy.ExecuteAsync(async () =>
+        try
         {
-            await using var tx = await _db.Database.BeginTransactionAsync();
-
-            // Row lock (SELECT FOR UPDATE): 2 ca thu song song cùng một công nợ không ghi đè nhau
-            var conn = _db.Database.GetDbConnection();
-            if (conn.State != System.Data.ConnectionState.Open)
-                await conn.OpenAsync();
-            int? lockedId = null;
-            using (var cmd = conn.CreateCommand() as Npgsql.NpgsqlCommand)
-            {
-                cmd!.CommandText = "SELECT \"Id\" FROM \"Debts\" WHERE \"Id\" = @id FOR UPDATE";
-                cmd.Parameters.Add(new Npgsql.NpgsqlParameter("@id", id));
-                lockedId = (await cmd.ExecuteScalarAsync()) as int?;
-            }
-            var d = lockedId is null
-                ? null
-                : await _db.Debts.FirstOrDefaultAsync(x => x.Id == id)
-                ?? throw new KeyNotFoundException($"Công nợ {id} không tồn tại");
-            if (d is null) throw new KeyNotFoundException($"Công nợ {id} không tồn tại");
-
-            var (debt, newRemaining) = _debts.ApplyPayment(d, req.Amount, req.Note, userId);
-
-            await _db.SaveChangesAsync();
-            await tx.CommitAsync();
-
-            return new PayDebtResponse(debt.Id, debt.Amount, debt.PaidAmount, newRemaining,
-                debt.Status.ToString());
-        });
-
-        return Ok(result);
+            var result = await _debts.PayDebtAsync(userId, id, req.Amount, req.Note);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     private static DebtResponse ToResponse(Debt d) =>

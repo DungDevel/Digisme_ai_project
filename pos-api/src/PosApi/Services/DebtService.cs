@@ -1,5 +1,8 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PosApi.Data;
 using PosApi.Domain;
+using PosApi.Dto;
 using PosApi.Services;
 
 namespace PosApi.Services;
@@ -46,5 +49,44 @@ public class DebtService
             new { paid = amount, remaining = newRemaining, status = debt.Status.ToString() });
 
         return (debt, newRemaining);
+    }
+
+    public async Task<PayDebtResponse> PayDebtAsync(int userId, int debtId, decimal amount, string? note)
+    {
+        var strategy = _db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            var existingTx = _db.Database.CurrentTransaction;
+            await using var tx = existingTx == null ? await _db.Database.BeginTransactionAsync() : null;
+
+            var conn = _db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
+
+            int? lockedId = null;
+            using (var cmd = conn.CreateCommand() as Npgsql.NpgsqlCommand)
+            {
+                cmd!.CommandText = "SELECT \"Id\" FROM \"Debts\" WHERE \"Id\" = @id FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is Npgsql.NpgsqlTransaction npgTx)
+                {
+                    cmd.Transaction = npgTx;
+                }
+                cmd.Parameters.Add(new Npgsql.NpgsqlParameter("@id", debtId));
+                lockedId = (await cmd.ExecuteScalarAsync()) as int?;
+            }
+
+            if (lockedId is null)
+                throw new KeyNotFoundException($"Công nợ {debtId} không tồn tại");
+
+            var debt = await _db.Debts.FirstOrDefaultAsync(x => x.Id == debtId)
+                ?? throw new KeyNotFoundException($"Công nợ {debtId} không tồn tại");
+
+            var (_, newRemaining) = ApplyPayment(debt, amount, note, userId);
+
+            await _db.SaveChangesAsync();
+            if (tx != null) await tx.CommitAsync();
+
+            return new PayDebtResponse(debt.Id, debt.Amount, debt.PaidAmount, newRemaining, debt.Status.ToString());
+        });
     }
 }

@@ -501,10 +501,11 @@ public class OrderServiceTests
     {
         var (context, tx) = _fixture.CreateContextWithTransaction();
         var (userId, product) = await SeedUserAndProduct(context, 100m, 10000m);
-        context.Surcharges.Add(new Surcharge { Name = "Phụ phí", Type = SurchargeType.Percent, Value = 10m, IsActive = true, ApplyMode = SurchargeApply.Auto });
+        var surcharge = new Surcharge { Name = "Phụ phí", Type = SurchargeType.Percent, Value = 10m, IsActive = true, ApplyMode = SurchargeApply.Auto };
+        context.Surcharges.Add(surcharge);
         await context.SaveChangesAsync();
 
-        var req = new CreateOrderRequest(null, "Cash", 200000m, 0m, new List<OrderSurchargeRequest> { new(1, 10m) }, new() { new(product.Id, null, 2, 10000m) });
+        var req = new CreateOrderRequest(null, "Cash", 200000m, 0m, new List<OrderSurchargeRequest> { new(surcharge.Id, 10m) }, new() { new(product.Id, null, 2, 10000m) });
         var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
         var res = await service.CreateOrderAsync(userId, req, null);
         var order = await context.Orders.Include(o => o.Items).FirstAsync(o => o.Id == res.Id);
@@ -549,6 +550,25 @@ public class OrderServiceTests
         var order = await context.Orders.Include(o => o.Items).FirstAsync(o => o.Id == res.Id);
 
         Assert.Equal(order.Discount, order.Items.Sum(i => i.LineDiscount));
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrder_WritesEarnPointTransaction()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var (userId, product) = await SeedUserAndProduct(context, 100m, 10000m);
+        var cust = new Customer { Name = "C", Phone = "09" + Guid.NewGuid().ToString().Substring(0, 8), IsActive = true };
+        context.Customers.Add(cust);
+        await context.SaveChangesAsync();
+
+        var req = new CreateOrderRequest(cust.Id, "Cash", 200000m, 0m, new(), new() { new(product.Id, null, 10, 10000m) });
+        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        await service.CreateOrderAsync(userId, req, null);
+
+        var pt = await context.PointTransactions.FirstOrDefaultAsync(t => t.Type == PointTransactionType.Earn);
+        Assert.NotNull(pt);
+        Assert.Equal(100, pt.Points);
         await tx.RollbackAsync();
     }
 }

@@ -16,6 +16,7 @@ public class AppDbContext : DbContext
     public DbSet<Product> Products => Set<Product>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<LoyaltyAccount> LoyaltyAccounts => Set<LoyaltyAccount>();
+    public DbSet<PointTransaction> PointTransactions => Set<PointTransaction>();
     public DbSet<Debt> Debts => Set<Debt>();
     public DbSet<Shift> Shifts => Set<Shift>();
     public DbSet<Order> Orders => Set<Order>();
@@ -113,6 +114,14 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.Customer).WithOne(x => x.Loyalty).HasForeignKey<LoyaltyAccount>(x => x.CustomerId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Tier).HasMaxLength(16);
             e.Property(x => x.LifetimeSpend).HasPrecision(18, 2);
+        });
+
+        mb.Entity<PointTransaction>(e =>
+        {
+            e.HasOne(x => x.LoyaltyAccount).WithMany(x => x.PointTransactions).HasForeignKey(x => x.LoyaltyAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Order).WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ReturnRecord).WithMany().HasForeignKey(x => x.ReturnRecordId).OnDelete(DeleteBehavior.SetNull);
+            e.Property(x => x.Type).HasConversion<int>();
         });
 
         mb.Entity<Debt>(e =>

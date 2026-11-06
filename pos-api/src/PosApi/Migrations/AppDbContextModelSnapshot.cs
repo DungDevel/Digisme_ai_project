@@ -283,6 +283,12 @@ namespace PosApi.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<int>("LoyaltyEarned")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("LoyaltyRevoked")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("PaidAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -455,6 +461,49 @@ namespace PosApi.Migrations
                     b.HasIndex("Method", "Status");
 
                     b.ToTable("Payments");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.PointTransaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LoyaltyAccountId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ReturnRecordId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Shortfall")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LoyaltyAccountId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ReturnRecordId");
+
+                    b.ToTable("PointTransactions");
                 });
 
             modelBuilder.Entity("PosApi.Domain.PosLog", b =>
@@ -1102,6 +1151,32 @@ namespace PosApi.Migrations
                     b.Navigation("Order");
                 });
 
+            modelBuilder.Entity("PosApi.Domain.PointTransaction", b =>
+                {
+                    b.HasOne("PosApi.Domain.LoyaltyAccount", "LoyaltyAccount")
+                        .WithMany("PointTransactions")
+                        .HasForeignKey("LoyaltyAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PosApi.Domain.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PosApi.Domain.ReturnRecord", "ReturnRecord")
+                        .WithMany()
+                        .HasForeignKey("ReturnRecordId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("LoyaltyAccount");
+
+                    b.Navigation("Order");
+
+                    b.Navigation("ReturnRecord");
+                });
+
             modelBuilder.Entity("PosApi.Domain.Product", b =>
                 {
                     b.HasOne("PosApi.Domain.Category", "Category")
@@ -1223,6 +1298,11 @@ namespace PosApi.Migrations
                     b.Navigation("Debts");
 
                     b.Navigation("Loyalty");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.LoyaltyAccount", b =>
+                {
+                    b.Navigation("PointTransactions");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Order", b =>

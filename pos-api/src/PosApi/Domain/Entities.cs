@@ -137,6 +137,31 @@ public class LoyaltyAccount
     public int Points { get; set; }
     public string Tier { get; set; } = "Silver";          // Silver / Gold / Platinum
     public decimal LifetimeSpend { get; set; }
+    public List<PointTransaction> PointTransactions { get; set; } = new();
+}
+
+public enum PointTransactionType
+{
+    Earn = 1,
+    Revoke = 2,
+    Redeem = 3,
+    RedeemRefund = 4
+}
+
+public class PointTransaction
+{
+    public int Id { get; set; }
+    public int LoyaltyAccountId { get; set; }
+    public LoyaltyAccount LoyaltyAccount { get; set; } = null!;
+    public int OrderId { get; set; }
+    public Order Order { get; set; } = null!;
+    public int? ReturnRecordId { get; set; }
+    public ReturnRecord? ReturnRecord { get; set; }
+    public PointTransactionType Type { get; set; }
+    public int Points { get; set; }           // Signed: positive for Earn/RedeemRefund, negative for Revoke/Redeem
+    public int Shortfall { get; set; }        // If points insufficient on revoke
+    public string? Note { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class Debt
@@ -192,6 +217,8 @@ public class Order
     public decimal Change { get; set; }
     public string DeliveryMethod { get; set; } = "instore";
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
+    public int LoyaltyEarned { get; set; }
+    public int LoyaltyRevoked { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
 

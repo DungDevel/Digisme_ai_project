@@ -345,6 +345,21 @@ public class StockInItem
     public decimal Total { get; set; }
 }
 
+// ─────────────────────────── Supplier ───────────────────────────
+
+public class Supplier
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // VD: NCC-00001 (unique)
+    public string Name { get; set; } = string.Empty;      // Unique case-insensitive giữa các active
+    public string? Phone { get; set; }
+    public string? Address { get; set; }
+    public string? TaxCode { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}
+
 // ─────────────────────────── Store setting ───────────────────────────
 
 /// Dòng duy nhất (Id=1) — thông tin cửa hàng, KHÔNG hard-code trong API

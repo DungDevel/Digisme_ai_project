@@ -32,6 +32,7 @@ public class AppDbContext : DbContext
     public DbSet<StoreSetting> StoreSettings => Set<StoreSetting>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<InvoiceDayCounter> InvoiceDayCounters => Set<InvoiceDayCounter>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -278,6 +279,18 @@ public class AppDbContext : DbContext
             e.ToTable("invoice_day_counter");
             e.HasKey(x => x.Day);
             e.Property(x => x.Day).HasMaxLength(10);
+        });
+
+        // ── Supplier ──
+        mb.Entity<Supplier>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Phone).HasMaxLength(32);
+            e.Property(x => x.Address).HasMaxLength(256);
+            e.Property(x => x.TaxCode).HasMaxLength(64);
         });
     }
 }

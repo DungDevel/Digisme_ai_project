@@ -148,3 +148,9 @@ public record PaymentResponse(
     DateTime? PaidAt,
     DateTime CreatedAt
 );
+
+// ── Suppliers (ADR 0001) ──
+public record SupplierCreateRequest(string? Code, string Name, string? Phone, string? Address, string? TaxCode);
+public record SupplierUpdateRequest(string Name, string? Phone, string? Address, string? TaxCode);
+public record SupplierResponse(int Id, string Code, string Name, string? Phone, string? Address, string? TaxCode, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+public record PagedSupplierResponse(int Page, int PageSize, int Total, int TotalPages, List<SupplierResponse> Items);

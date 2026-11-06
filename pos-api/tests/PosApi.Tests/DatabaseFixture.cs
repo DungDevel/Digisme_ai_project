@@ -13,32 +13,41 @@ namespace PosApi.Tests;
 public class DatabaseFixture : IDisposable
 {
     private readonly string _connectionString;
+    private static readonly object _migrationLock = new();
+    private static bool _migrated;
     private readonly object _lock = new();
 
     public DatabaseFixture()
     {
         _connectionString = "Host=localhost;Port=5432;Database=digism_pos_test;Username=pos_user;Password=pos_pass";
-        try
+        lock (_migrationLock)
         {
-            var options = new DbContextOptionsBuilder<AppDbContext>()
-                .UseNpgsql(_connectionString).Options;
-            using var context = new AppDbContext(options);
-            context.Database.Migrate();
-
-            if (!context.StoreSettings.Any())
+            if (!_migrated)
             {
-                context.StoreSettings.Add(new StoreSetting
+                try
                 {
-                    StoreName = "Test Store",
-                    Address = "Test Address",
-                    VatRatePercent = 10m
-                });
-                context.SaveChanges();
+                    var options = new DbContextOptionsBuilder<AppDbContext>()
+                        .UseNpgsql(_connectionString).Options;
+                    using var context = new AppDbContext(options);
+                    context.Database.Migrate();
+
+                    if (!context.StoreSettings.Any())
+                    {
+                        context.StoreSettings.Add(new StoreSetting
+                        {
+                            StoreName = "Test Store",
+                            Address = "Test Address",
+                            VatRatePercent = 10m
+                        });
+                        context.SaveChanges();
+                    }
+                }
+                catch
+                {
+                    // Already migrated
+                }
+                _migrated = true;
             }
-        }
-        catch
-        {
-            // Already migrated
         }
     }
 

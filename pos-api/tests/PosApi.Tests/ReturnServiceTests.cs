@@ -22,7 +22,7 @@ public class ReturnServiceTests
         var product = new Product
         {
             Name = "Test Product",
-            Barcode = "RET001",
+            Barcode = "RET-" + Guid.NewGuid().ToString().Substring(0, 8),
             CategoryId = category.Id,
             RetailPrice = 10000m,
             CurrentStock = 50m,
@@ -31,13 +31,14 @@ public class ReturnServiceTests
         context.Products.Add(product);
         await context.SaveChangesAsync();
 
-        var cashier = new User { Username = "admin" + Guid.NewGuid(), FullName = "Admin", Role = UserRole.Manager, PasswordHash = "x" };
+        var uniqueId = Guid.NewGuid().ToString().Substring(0, 8);
+        var cashier = new User { Username = "admin_" + uniqueId, Email = "admin_" + uniqueId + "@test.com", FullName = "Admin", Role = UserRole.Manager, PasswordHash = "x" };
         context.Users.Add(cashier);
         await context.SaveChangesAsync();
 
         var order = new Order
         {
-            Code = "INV-20261010-0001",
+            Code = "INV-20261010-" + Guid.NewGuid().ToString().Substring(0, 6),
             CashierId = cashier.Id,
             Subtotal = 20000m,
             Total = 20000m,
@@ -80,7 +81,7 @@ public class ReturnServiceTests
         var product = await context.Products.FindAsync(orderItem.ProductId);
         Assert.Equal(51m, product!.CurrentStock);
 
-        var ledger = await context.StockLedger.FirstOrDefaultAsync();
+        var ledger = await context.StockLedger.OrderByDescending(l => l.Id).FirstOrDefaultAsync(l => l.RefType == LedgerRefType.Return);
         Assert.NotNull(ledger);
         Assert.Equal(1m, ledger!.Qty);
         Assert.Equal(LedgerRefType.Return, ledger.RefType);

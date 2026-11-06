@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Dto;
@@ -50,6 +51,10 @@ public class ReturnService : IReturnService
             using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
             {
                 lockCmd!.CommandText = "SELECT \"Id\" FROM \"OrderItems\" WHERE \"Id\" = ANY(@ids) ORDER BY \"Id\" FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
+                {
+                    lockCmd.Transaction = npgTx;
+                }
                 lockCmd.Parameters.Add(new NpgsqlParameter("@ids", itemIds));
                 await lockCmd.ExecuteNonQueryAsync();
             }

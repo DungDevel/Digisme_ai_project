@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Dto;
@@ -75,6 +76,7 @@ public class StockInService : IStockInService
                 catch (DbUpdateException)
                 {
                     if (tx != null) await tx.RollbackAsync();
+                    else if (_db.Database.CurrentTransaction != null) await _db.Database.CurrentTransaction.RollbackAsync();
                     if (hasKey)
                     {
                         var winner = await _db.IdempotencyRecords
@@ -94,6 +96,10 @@ public class StockInService : IStockInService
             using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
             {
                 lockCmd!.CommandText = "SELECT \"Id\" FROM \"SupplierInvoices\" WHERE \"Id\" = @id FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx1)
+                {
+                    lockCmd.Transaction = npgTx1;
+                }
                 lockCmd.Parameters.Add(new NpgsqlParameter("@id", req.InvoiceId));
                 await lockCmd.ExecuteNonQueryAsync();
             }
@@ -108,6 +114,10 @@ public class StockInService : IStockInService
             using (var prodLockCmd = conn.CreateCommand() as NpgsqlCommand)
             {
                 prodLockCmd!.CommandText = "SELECT \"Id\" FROM \"Products\" WHERE \"Id\" = ANY(@ids) ORDER BY \"Id\" FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx2)
+                {
+                    prodLockCmd.Transaction = npgTx2;
+                }
                 prodLockCmd.Parameters.Add(new NpgsqlParameter("@ids", productIds));
                 await prodLockCmd.ExecuteNonQueryAsync();
             }

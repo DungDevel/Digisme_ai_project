@@ -33,9 +33,11 @@ public class OrderServiceTests
         };
         context.Products.Add(product);
 
+        var uniqueId = Guid.NewGuid().ToString().Substring(0, 8);
         var user = new User
         {
-            Username = "cashier_" + Guid.NewGuid().ToString().Substring(0, 8),
+            Username = "cashier_" + uniqueId,
+            Email = "cashier_" + uniqueId + "@test.com",
             FullName = "Test Cashier",
             Role = UserRole.Cashier,
             PasswordHash = "hash"

@@ -39,15 +39,15 @@
 3. **Mức độ Thấp (Low):**
    - File `docs/checklist/hermes.md` trống.
 
-## 5. Danh sách việc cần làm tiếp theo (Theo thứ tự ưu tiên chuẩn từ `gap-analysis.md`)
-1. **Hoàn thiện nhóm 1: Đơn Bán Hàng chiều sâu (3 ngày) — Giai đoạn A ĐÃ XONG:**
-   - *Mô tả:* Bổ sung định nghĩa `DebtPayResult` và các trường DTO mặc định an toàn trong `Dtos.cs`, thêm test xác nhận default values trong `OrderServiceTests.cs`. Build thành công (`0 Error`), test suite pass 38/39.
-   - *File/module liên quan:* `pos-api/src/PosApi/Dto/Dtos.cs`, `pos-api/tests/PosApi.Tests/OrderServiceTests.cs`.
-   - *Lý do:* Đã khắc phục thành công lỗi biên dịch CS0246. Chuẩn bị bước sang Giai đoạn B (Lập kế hoạch chi tiết cho các tính năng chiết khấu VIP, điểm loyalty, thu nợ cũ, phương thức giao hàng).
-   - *Độ khó:* S. *Phụ thuộc:* Không.
-2. **Hoàn thiện nhóm 2: ADR 0001 — Supplier & CustomerGroup (3 ngày):**
-   - *Mô tả:* Tạo entity `Supplier`, `CustomerGroup`, cập nhật quan hệ với `StockIn`, bổ sung migration EF Core 8.
-   - *File/module liên quan:* `pos-api/src/PosApi/Domain/Entities.cs`, `pos-api/src/PosApi/Data/AppDbContext.cs` (`gap-analysis.md:26, 72-76`).
+## 6. Các điểm lệch có chủ đích so với Gap Analysis & Backlog (Intentional Deviations & Backlog)
+- **`LineDiscount` thay cho "giá sau CK vào OrderItem.Price" (`gap-analysis.md:68`):** Hệ thống bảo lưu `UnitPrice` là giá gốc tại thời điểm bán nhằm đảm bảo tính toàn vẹn cho việc tính toán hoàn trả (`ReturnService`), đồng thời lưu chiết khấu phân bổ theo dòng tại `OrderItem.LineDiscount` (`decimal`, mặc định `0`).
+- **Phí giao hàng (`ShippingFee`) do client truyền (`req.ShippingFee`) thay vì "tính server":** Chấp nhận giá trị `ShippingFee` từ client sau khi qua kiểm tra validation không âm (`>= 0`) tương ứng với hình thức giao hàng (`instore`, `shopdelivery`, `carrier`).
+- **`DeliveryMethod` mở rộng 3 giá trị chuẩn:** `instore`, `shopdelivery`, `carrier` (mặc định `"instore"`).
+- **Backlog kỹ thuật & Nghiệp vụ ghi nhận:**
+  - *Return endpoint*: Chưa tích hợp `Idempotency-Key` chống double-return (ghi nhận vào backlog).
+  - *StockIn endpoint*: Chưa có `RequestHash` kiểm tra thay đổi nội dung (ghi nhận vào backlog).
+  - *Thực nghiệm `txid_current()`*: Thực nghiệm chi tiết trên ADO.NET transaction chưa thực hiện trên môi trường độc lập.
+  - *Đơn cũ có Discount thủ công*: Đơn hàng cũ trước khi có `LineDiscount` khi trả hàng sẽ hoàn theo giá gốc `UnitPrice * Qty` (hành vi hoàn dư cũ được giữ lại có chủ đích để tương thích ngược dữ liệu cũ).
    - *Lý do:* Tuân thủ quyết định kiến trúc đã approved.
    - *Độ khó:* M. *Phụ thuộc:* Không.
 3. **Hoàn thiện nhóm 3: Phân hệ F&B — Phân hệ D (5 ngày):**

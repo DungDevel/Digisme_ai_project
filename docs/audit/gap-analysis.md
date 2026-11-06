@@ -76,27 +76,27 @@ Hiện trạng: Orders ~55% (tạo đơn, tính giá server, VAT, làm tròn, id
 - [ ] 8 mục NCC/ĐC: CRUD NCC, CRUD nhóm ĐC, cờ nhóm "Là NCC", bảng giá áp dụng theo ĐC, `SupplierInvoice` gắn `SupplierId` (thay `SupplierName` string), "Tính lại công nợ", màn hình NCC/ĐC list+chi tiết, migration EF.
 
 ### 3.3. F&B — phân hệ D (5 ngày — L×3 + M×2)
-Hiện trạng: **0 trong code** (demo FnB là phạm vi demo bắt buộc theo roadmap §2).
-- [ ] **Khu vực** (L): entity `Area` + CRUD.
-- [ ] **Bàn** (L): entity `Table` (gắn `Area`, sức chứa, trạng thái trống/đang dùng/khóa).
-- [ ] **Phòng** (L): entity `Room` (tính giờ theo phút/giờ, dịch vụ tính giờ).
-- [ ] **Dịch vụ tính giờ** (M): bảng giá thời gian, tính phí theo số phút làm tròn.
-- [ ] **Định lượng** (M): BOM nguyên liệu theo sản phẩm (tiêu hao khi bán) — nối với kho.
+Hiện trạng: **Đã hoàn thành toàn bộ** (Khu vực, Bàn, Phòng, Dịch vụ tính giờ, Định lượng BOM tự động trừ kho).
+- [x] **Khu vực** (L): entity `Area` + CRUD.
+- [x] **Bàn** (L): entity `Table` (gắn `Area`, sức chứa, trạng thái trống/đang dùng/khóa).
+- [x] **Phòng** (L): entity `Room` (tính giờ theo phút/giờ, dịch vụ tính giờ).
+- [x] **Dịch vụ tính giờ** (M): bảng giá thời gian, tính phí theo số phút làm tròn.
+- [x] **Định lượng** (M): BOM nguyên liệu theo sản phẩm (tiêu hao khi bán) — nối với kho.
 
-### 3.4. Multi-warehouse (5 ngày — L×2 + M×3 + S×2)
-- [ ] **`Warehouse`** (L): entity đa kho (kho cửa hàng, kho vật tư — theo tmSales 1.4.7).
-- [ ] **`WarehouseStock`** (L): tồn theo kho, ledger `StockLedger` thêm `WarehouseId`.
-- [ ] **Xuất kho** (M): phiếu xuất, chốt/hủy chốt.
-- [ ] **Chuyển kho** (M): phiếu kho đi → kho đến, đồng bộ 2 đầu.
-- [ ] **Kiểm kê** (M): theo kho, chênh lệch điều chỉnh.
-- [ ] **Cân đối kho** (S): tồn đầu → nhập → xuất → tồn cuối (+ doanh thu, lãi gộp).
-- [ ] **Trả NCC** (S): phiếu trả, chốt/hủy — *phụ thuộc ADR 0001*.
+### 3.4. Multi-warehouse (5 ngày — L×2 + M×3 + S×2) — **Đã hoàn thành**
+- [x] **`Warehouse`** (L): entity đa kho (kho cửa hàng, kho vật tư — theo tmSales 1.4.7).
+- [x] **`WarehouseStock`** (L): tồn theo kho, ledger `StockLedger` thêm `WarehouseId`.
+- [x] **Xuất kho** (M): phiếu xuất, chốt/hủy chốt.
+- [x] **Chuyển kho** (M): phiếu kho đi → kho đến, đồng bộ 2 đầu.
+- [x] **Kiểm kê** (M): theo kho, chênh lệch điều chỉnh.
+- [x] **Cân đối kho** (S): tồn đầu → nhập → xuất → tồn cuối (+ doanh thu, lãi gộp).
+- [x] **Trả NCC** (S): phiếu trả, chốt/hủy — *phụ thuộc ADR 0001*.
 
-### 3.5. Tài chính (4 ngày — M×4)
-- [ ] **Phiếu thu / Phiếu chi** (M): gắn ĐC, hình thức TT, đơn hàng, phiên làm việc; chốt/hủy.
-- [ ] **Sổ quỹ** (M): thu vào, chi ra, tồn quỹ sau giao dịch (tiền mặt, QR).
-- [ ] **Sổ NK** (M): sổ nhật ký chung gom chứng từ (bán lẻ, thu, xuất kho).
-- [ ] **Công nợ NCC** (M): nợ NCC tăng/giảm, dư sau giao dịch — *phụ thuộc ADR 0001*.
+### 3.5. Tài chính (4 ngày — M×4) — **Đã hoàn thành**
+- [x] **Phiếu thu / Phiếu chi** (M): gắn ĐC, hình thức TT, đơn hàng, phiên làm việc; chốt/hủy.
+- [x] **Sổ quỹ** (M): thu vào, chi ra, tồn quỹ sau giao dịch (tiền mặt, QR).
+- [x] **Sổ NK** (M): sổ nhật ký chung gom chứng từ (bán lẻ, thu, xuất kho).
+- [x] **Công nợ NCC** (M): nợ NCC tăng/giảm, dư sau giao dịch — *phụ thuộc ADR 0001*.
 
 ### 3.6. Reports Đợt 2 (3 ngày — M×2)
 - [ ] **Kê khai thuế** (M): theo kỳ, chọn mẫu; tổng thuế bán ra/mua vào từ `OrderItem.Vat` + `SupplierInvoice`.

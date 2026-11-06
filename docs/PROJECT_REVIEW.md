@@ -24,9 +24,9 @@
 | **SignalR Realtime Hub** | Hub `/hubs/pos`, `NotificationService`, dispatching sự kiện | Đã triển khai backend Hub và service thông báo tại `PosHub.cs` và `NotificationService.cs` | **Hoàn thành (Backend)** |
 | **1. Đơn Bán Hàng chiều sâu** | Chiết khấu VIP, tiêu điểm loyalty, thu nợ cũ, phương thức giao hàng | Đã merge vào `main` (PR #5): `LineDiscount`, giao hàng, tích/thu hồi điểm (`PointTransactions`), hoàn tiền làm tròn nguyên đồng | **Hoàn thành** |
 | **2. ADR 0001 (Supplier & CustomerGroup)** | Entity `Supplier` riêng, `CustomerGroup`, 8 mục NCC/ĐC | Đã tích hợp `Supplier`, `CustomerGroup`, và khóa ngoại `StockIn.SupplierId`, hoàn thiện controller, service, migration và test. | **Hoàn thành** |
-| **3. Phân hệ F&B (Phân hệ D)** | Khu vực, Bàn, Phòng, Dịch vụ tính giờ, Định lượng (BOM) | Chưa có trong mã nguồn (`0` kết quả tìm kiếm F&B trong code) | **Chưa làm** |
-| **4. Multi-warehouse (Đa kho)** | `Warehouse`, `WarehouseStock`, xuất/chuyển kho, kiểm kê, cân đối kho | Chưa có trong code (hoãn sang Đợt 2 theo ADR 0002) | **Chưa làm** |
-| **5. Tài chính** | Phiếu thu/chi, Sổ quỹ, Sổ nhật ký chung, Công nợ NCC | Chưa có đầy đủ các sổ quỹ và phiếu chi trong code | **Dở dang / Chưa làm** |
+| **3. Phân hệ F&B (Phân hệ D)** | Khu vực, Bàn, Phòng, Dịch vụ tính giờ, Định lượng (BOM) | Đã implement `Area`, `Table`, `Room`, `ProductRecipe`, đầy đủ Controller, Service, trừ kho nguyên liệu BOM tự động khi bán hàng và test suite (124 tests pass). | **Hoàn thành** |
+| **4. Multi-warehouse (Đa kho)** | `Warehouse`, `WarehouseStock`, xuất/chuyển kho, kiểm kê, cân đối kho | Đã implement `Warehouse`, `WarehouseStock`, Chuyển kho (`WarehouseTransfer`), Kiểm kê (`StockTake`), Trả NCC (`SupplierReturn`), đầy đủ Controllers, Services và Unit Tests (128 tests pass). | **Hoàn thành** |
+| **5. Tài chính** | Phiếu thu/chi, Sổ quỹ, Sổ nhật ký chung, Công nợ NCC | Đã implement `CashVoucher`, `CashLedgerEntry`, `SupplierDebt`, cùng đầy đủ Services, Controllers (`CashVouchersController`, `CashFundBookController`, `GeneralJournalController`, `SupplierDebtsController`) và Unit Tests (131 tests pass). | **Hoàn thành** |
 | **6. Reports Đợt 2** | Kê khai thuế, Dashboard nâng cao (cơ cấu thanh toán, lãi gộp) | Đã có ReportService cơ bản, cần mở rộng theo Đợt 2 | **Dở dang** |
 | **7. 4 AI Routers (A1–A4)** | Dự báo thời tiết, NER hóa đơn, Copilot, Bán chéo | FastAPI app có sẵn khung router (`copilot.py`, `jobs.py`, `invoices.py`), phản hồi trạng thái mock | **Dở dang / 🟡** |
 

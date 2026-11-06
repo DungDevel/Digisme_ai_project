@@ -35,6 +35,21 @@ public class AppDbContext : DbContext
     public DbSet<InvoiceDayCounter> InvoiceDayCounters => Set<InvoiceDayCounter>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
     public DbSet<CustomerGroup> CustomerGroups => Set<CustomerGroup>();
+    public DbSet<Area> Areas => Set<Area>();
+    public DbSet<Table> Tables => Set<Table>();
+    public DbSet<Room> Rooms => Set<Room>();
+    public DbSet<ProductRecipe> ProductRecipes => Set<ProductRecipe>();
+    public DbSet<Warehouse> Warehouses => Set<Warehouse>();
+    public DbSet<WarehouseStock> WarehouseStocks => Set<WarehouseStock>();
+    public DbSet<WarehouseTransfer> WarehouseTransfers => Set<WarehouseTransfer>();
+    public DbSet<WarehouseTransferItem> WarehouseTransferItems => Set<WarehouseTransferItem>();
+    public DbSet<StockTake> StockTakes => Set<StockTake>();
+    public DbSet<StockTakeItem> StockTakeItems => Set<StockTakeItem>();
+    public DbSet<SupplierReturn> SupplierReturns => Set<SupplierReturn>();
+    public DbSet<SupplierReturnItem> SupplierReturnItems => Set<SupplierReturnItem>();
+    public DbSet<SupplierDebt> SupplierDebts => Set<SupplierDebt>();
+    public DbSet<CashVoucher> CashVouchers => Set<CashVoucher>();
+    public DbSet<CashLedgerEntry> CashLedger => Set<CashLedgerEntry>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -151,6 +166,38 @@ public class AppDbContext : DbContext
             e.Property(x => x.Status).HasConversion<int>();
         });
 
+        mb.Entity<SupplierDebt>(e =>
+        {
+            e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.Status);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.PaidAmount).HasPrecision(18, 2);
+            e.Property(x => x.Status).HasConversion<int>();
+        });
+
+        // ── Finance (Tài chính & Sổ quỹ) ──
+        mb.Entity<CashVoucher>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Type).HasConversion<int>();
+            e.Property(x => x.PartnerType).HasConversion<int>();
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.PaymentMethod).HasConversion<int>();
+            e.Property(x => x.Status).HasConversion<int>();
+            e.HasOne(x => x.Shift).WithMany().HasForeignKey(x => x.ShiftId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        mb.Entity<CashLedgerEntry>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Balance).HasPrecision(18, 2);
+            e.Property(x => x.PaymentMethod).HasConversion<int>();
+            e.HasIndex(x => x.CreatedAt);
+        });
+
         // ── Shift ──
         mb.Entity<Shift>(e =>
         {
@@ -226,6 +273,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.Balance).HasPrecision(18, 3);
             e.Property(x => x.RefType).HasConversion<int>();
             e.Property(x => x.RefId).HasMaxLength(64);
+            e.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── Audit (append-only) ──
@@ -320,6 +368,183 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.CustomerGroup)
                 .WithMany(x => x.Suppliers)
                 .HasForeignKey(x => x.CustomerGroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── F&B (Phân hệ D) ──
+        mb.Entity<Area>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Description).HasMaxLength(256);
+        });
+
+        mb.Entity<Table>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Status).HasConversion<int>();
+            e.HasOne(x => x.Area)
+                .WithMany(x => x.Tables)
+                .HasForeignKey(x => x.AreaId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CurrentOrder)
+                .WithMany()
+                .HasForeignKey(x => x.CurrentOrderId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        mb.Entity<Room>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            e.Property(x => x.HourlyRate).HasPrecision(18, 2);
+            e.Property(x => x.Status).HasConversion<int>();
+            e.HasOne(x => x.CurrentOrder)
+                .WithMany()
+                .HasForeignKey(x => x.CurrentOrderId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        mb.Entity<ProductRecipe>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.ProductId, x.IngredientId }).IsUnique();
+            e.Property(x => x.Qty).HasPrecision(18, 3);
+            e.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Ingredient)
+                .WithMany()
+                .HasForeignKey(x => x.IngredientId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Unit)
+                .WithMany()
+                .HasForeignKey(x => x.UnitId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ── Multi-warehouse ──
+        mb.Entity<Warehouse>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Address).HasMaxLength(256);
+        });
+
+        mb.Entity<WarehouseStock>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.WarehouseId, x.ProductId }).IsUnique();
+            e.Property(x => x.Stock).HasPrecision(18, 3);
+            e.HasOne(x => x.Warehouse)
+                .WithMany(x => x.WarehouseStocks)
+                .HasForeignKey(x => x.WarehouseId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        mb.Entity<WarehouseTransfer>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasConversion<int>();
+            e.HasOne(x => x.FromWarehouse)
+                .WithMany()
+                .HasForeignKey(x => x.FromWarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ToWarehouse)
+                .WithMany()
+                .HasForeignKey(x => x.ToWarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        mb.Entity<WarehouseTransferItem>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Qty).HasPrecision(18, 3);
+            e.Property(x => x.UnitCost).HasPrecision(18, 2);
+            e.HasOne(x => x.WarehouseTransfer)
+                .WithMany(x => x.Items)
+                .HasForeignKey(x => x.WarehouseTransferId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        mb.Entity<StockTake>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasConversion<int>();
+            e.HasOne(x => x.Warehouse)
+                .WithMany()
+                .HasForeignKey(x => x.WarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        mb.Entity<StockTakeItem>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.SystemQty).HasPrecision(18, 3);
+            e.Property(x => x.ActualQty).HasPrecision(18, 3);
+            e.Property(x => x.DeltaQty).HasPrecision(18, 3);
+            e.HasOne(x => x.StockTake)
+                .WithMany(x => x.Items)
+                .HasForeignKey(x => x.StockTakeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        mb.Entity<SupplierReturn>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Total).HasPrecision(18, 2);
+            e.Property(x => x.Status).HasConversion<int>();
+            e.HasOne(x => x.Supplier)
+                .WithMany()
+                .HasForeignKey(x => x.SupplierId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Warehouse)
+                .WithMany()
+                .HasForeignKey(x => x.WarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        mb.Entity<SupplierReturnItem>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Qty).HasPrecision(18, 3);
+            e.Property(x => x.UnitCost).HasPrecision(18, 2);
+            e.Property(x => x.Total).HasPrecision(18, 2);
+            e.HasOne(x => x.SupplierReturn)
+                .WithMany(x => x.Items)
+                .HasForeignKey(x => x.SupplierReturnId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

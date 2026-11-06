@@ -178,6 +178,20 @@ public class Debt
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+public class SupplierDebt
+{
+    public int Id { get; set; }
+    public int SupplierId { get; set; }
+    public Supplier Supplier { get; set; } = null!;
+    public decimal Amount { get; set; }
+    public decimal PaidAmount { get; set; }
+    public DebtStatus Status { get; set; } = DebtStatus.Open;
+    public string? ReferenceType { get; set; }              // StockIn, SupplierInvoice, Manual
+    public string? ReferenceId { get; set; }
+    public string? Note { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 // ─────────────────────────── Shift ───────────────────────────
 
 public class Shift
@@ -294,6 +308,8 @@ public class StockLedgerEntry
     public long Id { get; set; }
     public int ProductId { get; set; }
     public Product Product { get; set; } = null!;
+    public int? WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
     public decimal Qty { get; set; }           // ±, decimal(18,3)
     public decimal Balance { get; set; }       // running balance, decimal(18,3)
     public LedgerRefType RefType { get; set; }
@@ -452,4 +468,210 @@ public class InvoiceDayCounter
 {
     public string Day { get; set; } = string.Empty;          // yyyy-MM-dd (UTC)
     public int N { get; set; }
+}
+
+// ─────────────────────────── F&B (Phân hệ D) ───────────────────────────
+
+public enum TableStatus { Available = 0, Occupied = 1, Reserved = 2, Locked = 3 }
+
+public enum RoomStatus { Available = 0, Occupied = 1, Maintenance = 2 }
+
+public class Area
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    public List<Table> Tables { get; set; } = new();
+}
+
+public class Table
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public int AreaId { get; set; }
+    public Area Area { get; set; } = null!;
+    public int Capacity { get; set; } = 4;
+    public TableStatus Status { get; set; } = TableStatus.Available;
+    public int? CurrentOrderId { get; set; }
+    public Order? CurrentOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class Room
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public decimal HourlyRate { get; set; }
+    public RoomStatus Status { get; set; } = RoomStatus.Available;
+    public DateTime? StartTime { get; set; }
+    public int? CurrentOrderId { get; set; }
+    public Order? CurrentOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class ProductRecipe
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public int IngredientId { get; set; }
+    public Product Ingredient { get; set; } = null!;
+    public decimal Qty { get; set; }
+    public int? UnitId { get; set; }
+    public Unit? Unit { get; set; }
+}
+
+// ─────────────────────────── Multi-warehouse (Đa kho) ───────────────────────────
+
+public enum TransferStatus { Draft = 0, Completed = 1, Cancelled = 2 }
+public enum StockTakeStatus { Draft = 0, Completed = 1, Cancelled = 2 }
+public enum SupplierReturnStatus { Draft = 0, Completed = 1, Cancelled = 2 }
+
+public class Warehouse
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // WH-01 (unique)
+    public string Name { get; set; } = string.Empty;
+    public string? Address { get; set; }
+    public bool IsDefault { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+    public List<WarehouseStock> WarehouseStocks { get; set; } = new();
+}
+
+public class WarehouseStock
+{
+    public long Id { get; set; }
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public decimal Stock { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+}
+
+public class WarehouseTransfer
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // WHT-...
+    public int FromWarehouseId { get; set; }
+    public Warehouse FromWarehouse { get; set; } = null!;
+    public int ToWarehouseId { get; set; }
+    public Warehouse ToWarehouse { get; set; } = null!;
+    public TransferStatus Status { get; set; } = TransferStatus.Draft;
+    public string? Note { get; set; }
+    public int CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<WarehouseTransferItem> Items { get; set; } = new();
+}
+
+public class WarehouseTransferItem
+{
+    public int Id { get; set; }
+    public int WarehouseTransferId { get; set; }
+    public WarehouseTransfer WarehouseTransfer { get; set; } = null!;
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public decimal Qty { get; set; }
+    public decimal UnitCost { get; set; }
+}
+
+public class StockTake
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // ST-...
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public StockTakeStatus Status { get; set; } = StockTakeStatus.Draft;
+    public string? Note { get; set; }
+    public int CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<StockTakeItem> Items { get; set; } = new();
+}
+
+public class StockTakeItem
+{
+    public int Id { get; set; }
+    public int StockTakeId { get; set; }
+    public StockTake StockTake { get; set; } = null!;
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public decimal SystemQty { get; set; }
+    public decimal ActualQty { get; set; }
+    public decimal DeltaQty { get; set; }
+}
+
+public class SupplierReturn
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // SR-...
+    public int SupplierId { get; set; }
+    public Supplier Supplier { get; set; } = null!;
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public decimal Total { get; set; }
+    public SupplierReturnStatus Status { get; set; } = SupplierReturnStatus.Draft;
+    public string? Note { get; set; }
+    public int CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<SupplierReturnItem> Items { get; set; } = new();
+}
+
+public class SupplierReturnItem
+{
+    public int Id { get; set; }
+    public int SupplierReturnId { get; set; }
+    public SupplierReturn SupplierReturn { get; set; } = null!;
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public decimal Qty { get; set; }
+    public decimal UnitCost { get; set; }
+    public decimal Total { get; set; }
+}
+
+// ─────────────────────────── Finance (Tài chính & Sổ quỹ) ───────────────────────────
+
+public enum CashVoucherType { Receipt = 0, Payment = 1 }
+public enum PartnerType { Customer = 0, Supplier = 1, Other = 2 }
+public enum CashVoucherStatus { Draft = 0, Confirmed = 1, Cancelled = 2 }
+
+public class CashVoucher
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // PT-... or PC-...
+    public CashVoucherType Type { get; set; }
+    public PartnerType PartnerType { get; set; }
+    public int? PartnerId { get; set; }
+    public decimal Amount { get; set; }
+    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+    public string? ReferenceType { get; set; }              // Order, StockIn, SupplierReturn, Manual, etc.
+    public string? ReferenceId { get; set; }
+    public int? ShiftId { get; set; }
+    public Shift? Shift { get; set; }
+    public string? Note { get; set; }
+    public CashVoucherStatus Status { get; set; } = CashVoucherStatus.Draft;
+    public int CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ConfirmedAt { get; set; }
+}
+
+public class CashLedgerEntry
+{
+    public long Id { get; set; }
+    public decimal Amount { get; set; }                     // Positive for cash in, negative for cash out
+    public decimal Balance { get; set; }                    // Running cash balance
+    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+    public string RefType { get; set; } = string.Empty;     // CashVoucher, OrderPayment, etc.
+    public string? RefId { get; set; }
+    public string? Note { get; set; }
+    public int CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

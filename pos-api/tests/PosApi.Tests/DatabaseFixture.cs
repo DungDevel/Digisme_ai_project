@@ -129,6 +129,10 @@ public class DatabaseFixture : IDisposable
         using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
             TRUNCATE TABLE
+                ""SupplierReturnItems"", ""SupplierReturns"", ""StockTakeItems"", ""StockTakes"",
+                ""WarehouseTransferItems"", ""WarehouseTransfers"", ""WarehouseStocks"", ""Warehouses"",
+                ""CashVouchers"", ""CashLedger"", ""SupplierDebts"",
+                ""ProductRecipes"", ""Rooms"", ""Tables"", ""Areas"", ""CustomerGroups"",
                 ""Suppliers"", ""ReturnItems"", ""Returns"", ""OrderItems"", ""Orders"",
                 ""StockLedger"", ""PosLogs"", ""Debts"", ""LoyaltyAccounts"",
                 ""Customers"", ""StockInItems"", ""StockIns"", ""SupplierInvoices"",

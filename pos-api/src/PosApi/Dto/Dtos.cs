@@ -159,3 +159,110 @@ public record SupplierCreateRequest(string? Code, string Name, string? Phone, st
 public record SupplierUpdateRequest(string Name, string? Phone, string? Address, string? TaxCode, int? CustomerGroupId = null);
 public record SupplierResponse(int Id, string Code, string Name, string? Phone, string? Address, string? TaxCode, int? CustomerGroupId, string? CustomerGroupName, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
 public record PagedSupplierResponse(int Page, int PageSize, int Total, int TotalPages, List<SupplierResponse> Items);
+
+// ── F&B (Phân hệ D) ──
+public record AreaCreateRequest(string Code, string Name, string? Description, int SortOrder = 0);
+public record AreaUpdateRequest(string Name, string? Description, int SortOrder, bool IsActive);
+public record AreaResponse(int Id, string Code, string Name, string? Description, int SortOrder, bool IsActive, int TableCount, DateTime CreatedAt, DateTime? UpdatedAt);
+public record PagedAreaResponse(int Page, int PageSize, int Total, int TotalPages, List<AreaResponse> Items);
+
+public record TableCreateRequest(string Code, string Name, int AreaId, int Capacity = 4);
+public record TableUpdateRequest(string Name, int AreaId, int Capacity, bool IsActive);
+public record TableStatusUpdateRequest(TableStatus Status);
+public record TransferTableRequest(int TargetTableId);
+public record TableResponse(int Id, string Code, string Name, int AreaId, string AreaName, int Capacity, TableStatus Status, int? CurrentOrderId, string? CurrentOrderCode, bool IsActive);
+public record PagedTableResponse(int Page, int PageSize, int Total, int TotalPages, List<TableResponse> Items);
+
+public record RoomCreateRequest(string Code, string Name, decimal HourlyRate);
+public record RoomUpdateRequest(string Name, decimal HourlyRate, bool IsActive);
+public record RoomCheckInRequest(int? CustomerId);
+public record RoomCheckOutResponse(int RoomId, string RoomCode, decimal MinutesUsed, decimal HoursUsed, decimal Amount, int OrderId, string OrderCode);
+public record RoomResponse(int Id, string Code, string Name, decimal HourlyRate, RoomStatus Status, DateTime? StartTime, int? CurrentOrderId, string? CurrentOrderCode, bool IsActive);
+public record PagedRoomResponse(int Page, int PageSize, int Total, int TotalPages, List<RoomResponse> Items);
+
+public record ProductRecipeItemRequest(int IngredientId, decimal Qty, int? UnitId);
+public record ProductRecipeUpsertRequest(List<ProductRecipeItemRequest> Items);
+public record ProductRecipeResponse(int Id, int ProductId, string ProductName, int IngredientId, string IngredientName, decimal Qty, int? UnitId, string? UnitName);
+
+// ─────────────────────────── Multi-warehouse DTOs ───────────────────────────
+
+public record WarehouseCreateRequest(string Code, string Name, string? Address, bool IsDefault);
+public record WarehouseUpdateRequest(string Name, string? Address, bool IsDefault, bool IsActive);
+public record WarehouseResponse(int Id, string Code, string Name, string? Address, bool IsDefault, bool IsActive, DateTime CreatedAt, DateTime? UpdatedAt);
+public record PagedWarehouseResponse(int Page, int PageSize, int Total, int TotalPages, List<WarehouseResponse> Items);
+
+public record WarehouseStockResponse(long Id, int WarehouseId, string WarehouseName, int ProductId, string ProductBarcode, string ProductName, decimal Stock, DateTime? UpdatedAt);
+public record PagedWarehouseStockResponse(int Page, int PageSize, int Total, int TotalPages, List<WarehouseStockResponse> Items);
+
+public record WarehouseTransferItemRequest(int ProductId, decimal Quantity, decimal UnitCost, string? Note);
+public record WarehouseTransferCreateRequest(int FromWarehouseId, int ToWarehouseId, string? Note, List<WarehouseTransferItemRequest> Items);
+public record WarehouseTransferItemResponse(int Id, int ProductId, string ProductBarcode, string ProductName, decimal Quantity, decimal UnitCost);
+public record WarehouseTransferResponse(int Id, string Code, int FromWarehouseId, string FromWarehouseName, int ToWarehouseId, string ToWarehouseName, TransferStatus Status, string? Note, int CreatedBy, DateTime CreatedAt, List<WarehouseTransferItemResponse> Items);
+public record PagedWarehouseTransferResponse(int Page, int PageSize, int Total, int TotalPages, List<WarehouseTransferResponse> Items);
+
+public record StockTakeItemRequest(int ProductId, decimal SystemQty, decimal ActualQty, string? Note);
+public record StockTakeCreateRequest(int WarehouseId, string? Note, List<StockTakeItemRequest> Items);
+public record StockTakeItemResponse(int Id, int ProductId, string ProductBarcode, string ProductName, decimal SystemQty, decimal ActualQty, decimal DeltaQty);
+public record StockTakeResponse(int Id, string Code, int WarehouseId, string WarehouseName, StockTakeStatus Status, string? Note, int CreatedBy, DateTime CreatedAt, List<StockTakeItemResponse> Items);
+public record PagedStockTakeResponse(int Page, int PageSize, int Total, int TotalPages, List<StockTakeResponse> Items);
+
+public record SupplierReturnItemRequest(int ProductId, decimal Qty, decimal UnitCost, string? Note);
+public record SupplierReturnCreateRequest(int SupplierId, int WarehouseId, string? Note, List<SupplierReturnItemRequest> Items);
+public record SupplierReturnItemResponse(int Id, int ProductId, string ProductBarcode, string ProductName, decimal Qty, decimal UnitCost, decimal Total);
+public record SupplierReturnResponse(int Id, string Code, int SupplierId, string SupplierName, int WarehouseId, string WarehouseName, SupplierReturnStatus Status, decimal Total, string? Note, int CreatedBy, DateTime CreatedAt, List<SupplierReturnItemResponse> Items);
+public record PagedSupplierReturnResponse(int Page, int PageSize, int Total, int TotalPages, List<SupplierReturnResponse> Items);
+
+// ─────────────────────────── Finance DTOs ───────────────────────────
+
+public record CashVoucherCreateRequest(CashVoucherType Type, PartnerType PartnerType, int? PartnerId, decimal Amount, PaymentMethod PaymentMethod, string? ReferenceType, string? ReferenceId, int? ShiftId, string? Note);
+public record CashVoucherResponse(int Id, string Code, CashVoucherType Type, PartnerType PartnerType, int? PartnerId, string? PartnerName, decimal Amount, PaymentMethod PaymentMethod, string? ReferenceType, string? ReferenceId, int? ShiftId, string? Note, CashVoucherStatus Status, int CreatedBy, DateTime CreatedAt, DateTime? ConfirmedAt);
+public record PagedCashVoucherResponse(int Page, int PageSize, int Total, int TotalPages, List<CashVoucherResponse> Items);
+
+public record CashFundBookSummaryResponse(decimal OpeningBalance, decimal TotalReceipts, decimal TotalPayments, decimal ClosingBalance);
+public record CashLedgerItemResponse(long Id, decimal Amount, decimal Balance, PaymentMethod PaymentMethod, string RefType, string? RefId, string? Note, int CreatedBy, DateTime CreatedAt);
+public record PagedCashLedgerResponse(int Page, int PageSize, int Total, int TotalPages, decimal OpeningBalance, decimal ClosingBalance, List<CashLedgerItemResponse> Items);
+
+public record GeneralJournalItemResponse(string Id, DateTime Timestamp, string VoucherType, string Code, string Description, decimal Amount, string PartnerName, string CreatedBy);
+public record PagedGeneralJournalResponse(int Page, int PageSize, int Total, int TotalPages, List<GeneralJournalItemResponse> Items);
+
+public record SupplierDebtResponse(int Id, int SupplierId, string SupplierName, decimal Amount, decimal PaidAmount, decimal RemainingAmount, string Status, string? ReferenceType, string? ReferenceId, string? Note, DateTime CreatedAt);
+public record PagedSupplierDebtResponse(int Page, int PageSize, int Total, int TotalPages, List<SupplierDebtResponse> Items);
+public record PaySupplierDebtRequest(decimal Amount, string? Note);
+public record PaySupplierDebtResponse(int SupplierDebtId, decimal Amount, decimal PaidAmount, decimal RemainingAmount, string Status);
+
+// ─────────────────────────── Reports Đợt 2 DTOs ───────────────────────────
+
+public record TaxDeclarationReportResponse(
+    DateTime StartDate,
+    DateTime EndDate,
+    decimal TotalSalesRevenue,
+    decimal TotalOutputVat,
+    decimal TotalPurchaseAmount,
+    decimal TotalInputVat
+);
+
+public record AdvancedDashboardResponse(
+    DateTime StartDate,
+    DateTime EndDate,
+    decimal TotalRevenue,
+    decimal TotalCostOfGoodsSold,
+    decimal GrossProfit,
+    decimal GrossProfitMarginPercent,
+    List<PaymentMethodSummary> PaymentMethods,
+    List<TopProductReportItem> TopSelling,
+    List<InventoryItemBrief> LowStockItems,
+    decimal CurrentCashBalance
+);
+
+public record SlowMovingProductItem(int ProductId, int CategoryId, string CategoryName, string ProductName, string Barcode, decimal CurrentStock, decimal CostPrice, decimal TotalValue);
+public record SlowMovingReportResponse(DateTime StartDate, DateTime EndDate, List<SlowMovingProductItem> Items);
+
+public record CashFlowReportResponse(
+    DateTime StartDate,
+    DateTime EndDate,
+    decimal OpeningBalance,
+    decimal TotalReceipts,
+    decimal TotalPayments,
+    decimal ClosingBalance,
+    List<CashVoucherResponse> Vouchers
+);

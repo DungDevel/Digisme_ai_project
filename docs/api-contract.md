@@ -219,6 +219,30 @@ Tất cả các endpoint yêu cầu role `Manager`.
 
 ---
 
+## M11. F&B (Phân hệ D) — ✅
+| Method | Path | Role | Mô tả |
+|---|---|---|---|
+| GET | `/api/v1/areas` | AnyRole | Danh sách khu vực (`?q=&page=&pageSize=&includeInactive=`) |
+| POST | `/api/v1/areas` | ManagerOnly | Tạo khu vực mới |
+| PUT | `/api/v1/areas/{id}` | ManagerOnly | Cập nhật khu vực |
+| DELETE | `/api/v1/areas/{id}` | ManagerOnly | Xóa khu vực |
+| GET | `/api/v1/tables` | AnyRole | Danh sách bàn (`?areaId=&status=&page=&pageSize=&includeInactive=`) |
+| POST | `/api/v1/tables` | ManagerOnly | Tạo bàn mới |
+| PUT | `/api/v1/tables/{id}` | ManagerOnly | Cập nhật bàn |
+| PATCH | `/api/v1/tables/{id}/status` | AnyRole | Cập nhật trạng thái bàn (`available`, `occupied`, `reserved`, `locked`) |
+| POST | `/api/v1/tables/transfer?sourceTableId={id}` | AnyRole | Chuyển bàn (body: `{targetTableId}`) |
+| DELETE | `/api/v1/tables/{id}` | ManagerOnly | Xóa bàn |
+| GET | `/api/v1/rooms` | AnyRole | Danh sách phòng tính giờ (`?q=&status=&page=&pageSize=&includeInactive=`) |
+| POST | `/api/v1/rooms` | ManagerOnly | Tạo phòng tính giờ mới |
+| PUT | `/api/v1/rooms/{id}` | ManagerOnly | Cập nhật phòng |
+| POST | `/api/v1/rooms/{id}/check-in` | AnyRole | Check-in phòng (bắt đầu tính giờ) |
+| POST | `/api/v1/rooms/{id}/check-out` | AnyRole | Check-out phòng (tự động tính thời gian và thành tiền dịch vụ giờ) |
+| DELETE | `/api/v1/rooms/{id}` | ManagerOnly | Xóa phòng |
+| GET | `/api/v1/products/{productId}/recipes` | ManagerOnly | Xem danh sách định lượng BOM của sản phẩm F&B |
+| POST | `/api/v1/products/{productId}/recipes` | ManagerOnly | Cập nhật định lượng BOM (upsert danh sách nguyên liệu tiêu hao) |
+
+---
+
 ## Quy ước chung
 1. **Paging:** `page` (1-based) + `pageSize` (max 100); response có `total`, `totalPages`.
 2. **Enum trong JSON:** chuỗi chữ thường (`cash`, `completed`, `pending_review`, `confirmed`, `open`, `settled`).

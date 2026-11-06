@@ -160,7 +160,7 @@ public class ReturnService : IReturnService
                     throw new BusinessRuleException($"Số lượng trả vượt quá số lượng đã bán của món {oi.Product.Name} (Đã trả: {oi.ReturnedQty}, Bán: {oi.Qty})");
 
                 var grossLine = oi.UnitPrice * oi.Qty;
-                var lineSurcharge = totalSubtotal > 0 ? Math.Round(order.SurchargeTotal * (grossLine / totalSubtotal), 2, MidpointRounding.AwayFromZero) : 0m;
+                var lineSurcharge = totalSubtotal > 0 ? Math.Round(order.SurchargeTotal * (grossLine / totalSubtotal), 0, MidpointRounding.AwayFromZero) : 0m;
                 var netLineTotal = grossLine - oi.LineDiscount + lineSurcharge;
 
                 decimal itemReturnTotal;
@@ -197,7 +197,7 @@ public class ReturnService : IReturnService
             {
                 totalReturnedAmount += order.ShippingFee;
             }
-            totalReturnedAmount = Math.Round(totalReturnedAmount, 2, MidpointRounding.AwayFromZero);
+            totalReturnedAmount = Math.Round(totalReturnedAmount, 0, MidpointRounding.AwayFromZero);
 
             // 2. Create Return Record
             var returnCode = $"PHTRA-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";

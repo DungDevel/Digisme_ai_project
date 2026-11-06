@@ -101,6 +101,7 @@ public class ReturnService : IReturnService
             }
 
             // 1. Lock Order & OrderItems to prevent concurrency issues (Double return)
+            // Lock order: OrderItems -> LoyaltyAccounts (consistent lock order: Products -> LoyaltyAccounts)
             var order = await _db.Orders
                 .Include(o => o.Items)
                 .FirstOrDefaultAsync(o => o.Id == req.OrderId);

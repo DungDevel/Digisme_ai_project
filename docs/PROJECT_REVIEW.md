@@ -23,7 +23,7 @@
 | **Payments & VietQR** | Tạo mã VietQR động QuickLink và xác nhận đối soát | Đã implement tại `PaymentsController.cs` và `PaymentService.cs` | **Hoàn thành** |
 | **SignalR Realtime Hub** | Hub `/hubs/pos`, `NotificationService`, dispatching sự kiện | Đã triển khai backend Hub và service thông báo tại `PosHub.cs` và `NotificationService.cs` | **Hoàn thành (Backend)** |
 | **1. Đơn Bán Hàng chiều sâu** | Chiết khấu VIP, tiêu điểm loyalty, thu nợ cũ, phương thức giao hàng | Đã merge vào `main` (PR #5): `LineDiscount`, giao hàng, tích/thu hồi điểm (`PointTransactions`), hoàn tiền làm tròn nguyên đồng | **Hoàn thành** |
-| **2. ADR 0001 (Supplier & CustomerGroup)** | Entity `Supplier` riêng, `CustomerGroup`, 8 mục NCC/ĐC | Đã merge vào `main` (PR #4): `Supplier`, `CustomerGroup` (phân cấp tối đa 5 tầng, mã duy nhất), controller, service, migration, test. Cần kiểm tra thêm: `StockIn` đã chuyển từ `SupplierName` string sang khóa ngoại `Supplier` hay chưa | **Hoàn thành (cần rà StockIn)** |
+| **2. ADR 0001 (Supplier & CustomerGroup)** | Entity `Supplier` riêng, `CustomerGroup`, 8 mục NCC/ĐC | Đã tích hợp `Supplier`, `CustomerGroup`, và khóa ngoại `StockIn.SupplierId`, hoàn thiện controller, service, migration và test. | **Hoàn thành** |
 | **3. Phân hệ F&B (Phân hệ D)** | Khu vực, Bàn, Phòng, Dịch vụ tính giờ, Định lượng (BOM) | Chưa có trong mã nguồn (`0` kết quả tìm kiếm F&B trong code) | **Chưa làm** |
 | **4. Multi-warehouse (Đa kho)** | `Warehouse`, `WarehouseStock`, xuất/chuyển kho, kiểm kê, cân đối kho | Chưa có trong code (hoãn sang Đợt 2 theo ADR 0002) | **Chưa làm** |
 | **5. Tài chính** | Phiếu thu/chi, Sổ quỹ, Sổ nhật ký chung, Công nợ NCC | Chưa có đầy đủ các sổ quỹ và phiếu chi trong code | **Dở dang / Chưa làm** |
@@ -34,7 +34,7 @@
 1. **Mức độ Cao (High):**
    - **Rủi ro tiến độ (Capacity vs Effort):** Tổng scope 27 ngày effort cần hoàn thành trước mốc feature freeze cứng ngày **03/12/2026** (`gap-analysis.md:34, 44`).
 2. **Mức độ Trung bình (Medium):**
-   - **Hạ tầng test:** `DatabaseFixture.CreateContextWithTransaction()` mở kết nối nhưng không dispose, nên khi số test tăng (hiện 114) Postgres có thể hết slot (`53300`) và làm đỏ ngẫu nhiên các test chạy cuối (ví dụ `StockInServiceTests`). Tạm xử lý bằng `max_connections=300`; cần sửa gốc bằng cách dispose context sau mỗi test.
+   - **Hạ tầng test:** `DatabaseFixture` và `AppDbContext` đã được cập nhật để tự động đóng và giải phóng kết nối (`NpgsqlConnection`) sau mỗi test / context disposal, giải quyết triệt để rủi ro cạn kiệt pool kết nối Postgres.
    - **Nhận định về tài liệu kiểm toán cũ (`AUDIT-2026-10-29.md`):** Tài liệu này mô tả tech stack Java 17 / Spring Boot của hệ thống tham chiếu **tmSales**, không phải lỗi của DigiSME (.NET 8). Do đó **không cần sửa** file này mà cần hiểu đúng đây là báo cáo khảo sát hệ thống đối thủ/tham chiếu.
 3. **Mức độ Thấp (Low):**
    - File `docs/checklist/hermes.md` trống.

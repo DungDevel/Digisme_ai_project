@@ -167,6 +167,24 @@ Body thu nợ (`POST /api/v1/debts/{id}/pay`):
 
 ---
 
+## M10. SUPPLIERS & CUSTOMER GROUPS (Nhà cung cấp & Nhóm khách hàng / NCC — ADR 0001) — ✅
+Tất cả các endpoint yêu cầu role `Manager`.
+
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/v1/suppliers` | Danh sách nhà cung cấp (`?q=&page=&pageSize=&includeInactive=`) |
+| GET | `/api/v1/suppliers/{id}` | Chi tiết nhà cung cấp |
+| POST | `/api/v1/suppliers` | Tạo nhà cung cấp mới |
+| PUT | `/api/v1/suppliers/{id}` | Cập nhật nhà cung cấp |
+| DELETE | `/api/v1/suppliers/{id}` | Xóa mềm nhà cung cấp |
+| GET | `/api/v1/customer-groups` | Danh sách nhóm khách hàng/NCC (`?q=&isSupplier=&page=&pageSize=&includeInactive=`) |
+| GET | `/api/v1/customer-groups/{id}` | Chi tiết nhóm |
+| POST | `/api/v1/customer-groups` | Tạo nhóm mới |
+| PUT | `/api/v1/customer-groups/{id}` | Cập nhật nhóm |
+| DELETE | `/api/v1/customer-groups/{id}` | Xóa nhóm |
+
+---
+
 ## Payments & VietQR (Thanh toán QR động) — ✅
 | Method | Path | Role | Mô tả |
 |---|---|---|---|

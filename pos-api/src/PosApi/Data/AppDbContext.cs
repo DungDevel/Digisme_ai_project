@@ -323,4 +323,30 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }
+
+    public override void Dispose()
+    {
+        try
+        {
+            var conn = Database.GetDbConnection();
+            if (conn.State == System.Data.ConnectionState.Open)
+                conn.Close();
+            conn.Dispose();
+        }
+        catch {}
+        base.Dispose();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        try
+        {
+            var conn = Database.GetDbConnection();
+            if (conn.State == System.Data.ConnectionState.Open)
+                await conn.CloseAsync();
+            await conn.DisposeAsync();
+        }
+        catch {}
+        await base.DisposeAsync();
+    }
 }

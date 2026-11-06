@@ -16,6 +16,7 @@ public class DatabaseFixture : IDisposable
     private static readonly object _migrationLock = new();
     private static bool _migrated;
     private readonly object _lock = new();
+    private readonly List<NpgsqlConnection> _connections = new();
 
     public DatabaseFixture()
     {
@@ -84,6 +85,7 @@ public class DatabaseFixture : IDisposable
         {
             var connection = new NpgsqlConnection(_connectionString + ";Command Timeout=120;");
             connection.Open();
+            _connections.Add(connection);
 
             var options = new DbContextOptionsBuilder<AppDbContext>()
                 .UseNpgsql(connection).Options;
@@ -139,6 +141,19 @@ public class DatabaseFixture : IDisposable
 
     public void Dispose()
     {
-        // Không cần làm gì vì connection được quản lý trong CreateContextWithTransaction
+        lock (_lock)
+        {
+            foreach (var conn in _connections)
+            {
+                try
+                {
+                    if (conn.State == System.Data.ConnectionState.Open)
+                        conn.Close();
+                    conn.Dispose();
+                }
+                catch {}
+            }
+            _connections.Clear();
+        }
     }
 }

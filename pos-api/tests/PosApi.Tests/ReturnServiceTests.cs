@@ -395,6 +395,54 @@ public class ReturnServiceTests
     }
 
     [Fact]
+    public async Task CreateReturnAsync_FractionalSurcharge_SumEqualsTotalReturned()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var category = new Category { Name = "Cat " + Guid.NewGuid(), IsActive = true };
+        context.Categories.Add(category);
+        await context.SaveChangesAsync();
+
+        var p1 = new Product { Name = "P1", Barcode = "P1-" + Guid.NewGuid().ToString().Substring(0, 8), CategoryId = category.Id, RetailPrice = 3000m, CurrentStock = 50m, IsActive = true };
+        var p2 = new Product { Name = "P2", Barcode = "P2-" + Guid.NewGuid().ToString().Substring(0, 8), CategoryId = category.Id, RetailPrice = 7000m, CurrentStock = 50m, IsActive = true };
+        context.Products.AddRange(p1, p2);
+        var cashier = new User { Username = "u_" + Guid.NewGuid(), Email = "u_" + Guid.NewGuid() + "@test.com", FullName = "U", Role = UserRole.Manager, PasswordHash = "x" };
+        context.Users.Add(cashier);
+        await context.SaveChangesAsync();
+
+        var order = new Order
+        {
+            Code = "INV-" + Guid.NewGuid().ToString().Substring(0, 6),
+            CashierId = cashier.Id,
+            Subtotal = 10000m,
+            SurchargeTotal = 1000m,
+            Total = 11000m,
+            Status = OrderStatus.Completed,
+            Items = new List<OrderItem>
+            {
+                new OrderItem { ProductId = p1.Id, Qty = 1, UnitPrice = 3000m, Total = 3000m, ReturnedQty = 0 },
+                new OrderItem { ProductId = p2.Id, Qty = 1, UnitPrice = 7000m, Total = 7000m, ReturnedQty = 0 }
+            }
+        };
+        context.Orders.Add(order);
+        await context.SaveChangesAsync();
+
+        var service = new ReturnService(context, new Mock<ILogger<ReturnService>>().Object);
+        var items = order.Items.ToList();
+
+        var res = await service.CreateReturnAsync(1, new ReturnRequest(order.Id, "fractional surcharge return", new List<ReturnItemRequest>
+        {
+            new(items[0].Id, 1),
+            new(items[1].Id, 1)
+        }));
+
+        var returnRecord = await context.Returns.Include(r => r.Items).FirstAsync(r => r.Code == res.Code);
+        var sumItems = returnRecord.Items.Sum(i => i.Total);
+        Assert.Equal(res.TotalReturned, sumItems);
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
     public async Task ReturnAfterFullyReturned_Throws400()
     {
         var (context, tx) = _fixture.CreateContextWithTransaction();

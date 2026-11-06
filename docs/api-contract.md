@@ -3,7 +3,7 @@
 > Tài liệu giao kèo giữa Backend (ASP.NET `pos-api` + FastAPI `ai-service`) và Frontend.
 > Mọi endpoint trả về JSON UTF-8. Lỗi chung: `{"error": "thông điệp tiếng Việt"}` + status code.
 > Auth: header `Authorization: Bearer <token>` (token từ `POST /api/v1/auth/login`).
-> Tiền tệ: số nguyên VNĐ (decimal 18,2). Thời gian: ISO 8601 UTC.
+> Tiền tệ: số nguyên VNĐ (làm tròn số nguyên đồng bằng `Math.Round(v, 0, MidpointRounding.AwayFromZero)`). Thời gian: ISO 8601 UTC.
 
 **Trạng thái legend:** ✅ = đã implement và kiểm thử | 🟡 = contract chốt, implement theo roadmap
 

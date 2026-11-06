@@ -60,7 +60,13 @@ namespace PosApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("CustomerGroupId")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsVip")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
@@ -75,10 +81,59 @@ namespace PosApi.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CustomerGroupId");
+
                     b.HasIndex("Phone")
                         .IsUnique();
 
                     b.ToTable("Customers");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.CustomerGroup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("DefaultDiscountRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSupplier")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("ParentId");
+
+                    b.ToTable("CustomerGroups");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Debt", b =>
@@ -174,6 +229,10 @@ namespace PosApi.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("RequestHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<string>("ResultJson")
                         .HasColumnType("text");
 
@@ -268,6 +327,10 @@ namespace PosApi.Migrations
                     b.Property<int?>("CustomerId")
                         .HasColumnType("integer");
 
+                    b.Property<string>("DeliveryMethod")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<decimal>("Discount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -281,6 +344,9 @@ namespace PosApi.Migrations
 
                     b.Property<int?>("ShiftId")
                         .HasColumnType("integer");
+
+                    b.Property<decimal>("ShippingFee")
+                        .HasColumnType("numeric");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -328,6 +394,9 @@ namespace PosApi.Migrations
                     b.Property<bool>("Cancelled")
                         .HasColumnType("boolean");
 
+                    b.Property<decimal>("LineDiscount")
+                        .HasColumnType("numeric");
+
                     b.Property<int>("OrderId")
                         .HasColumnType("integer");
 
@@ -356,6 +425,9 @@ namespace PosApi.Migrations
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("Vat")
+                        .HasColumnType("numeric");
 
                     b.HasKey("Id");
 
@@ -853,6 +925,58 @@ namespace PosApi.Migrations
                     b.ToTable("StoreSettings");
                 });
 
+            modelBuilder.Entity("PosApi.Domain.Supplier", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CustomerGroupId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TaxCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("CustomerGroupId");
+
+                    b.ToTable("Suppliers");
+                });
+
             modelBuilder.Entity("PosApi.Domain.SupplierInvoice", b =>
                 {
                     b.Property<int>("Id")
@@ -992,6 +1116,26 @@ namespace PosApi.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.Customer", b =>
+                {
+                    b.HasOne("PosApi.Domain.CustomerGroup", "CustomerGroup")
+                        .WithMany("Customers")
+                        .HasForeignKey("CustomerGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CustomerGroup");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.CustomerGroup", b =>
+                {
+                    b.HasOne("PosApi.Domain.CustomerGroup", "Parent")
+                        .WithMany("Children")
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Parent");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Debt", b =>
@@ -1193,6 +1337,16 @@ namespace PosApi.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("PosApi.Domain.Supplier", b =>
+                {
+                    b.HasOne("PosApi.Domain.CustomerGroup", "CustomerGroup")
+                        .WithMany("Suppliers")
+                        .HasForeignKey("CustomerGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CustomerGroup");
+                });
+
             modelBuilder.Entity("PosApi.Domain.Category", b =>
                 {
                     b.Navigation("Products");
@@ -1203,6 +1357,15 @@ namespace PosApi.Migrations
                     b.Navigation("Debts");
 
                     b.Navigation("Loyalty");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.CustomerGroup", b =>
+                {
+                    b.Navigation("Children");
+
+                    b.Navigation("Customers");
+
+                    b.Navigation("Suppliers");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Order", b =>

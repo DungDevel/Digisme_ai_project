@@ -46,12 +46,20 @@ public class ReportService : IReportService
         var startDate = from ?? DateTime.UtcNow.Date.AddDays(-30);
         var endDate = to ?? DateTime.UtcNow;
 
-        var items = await _context.OrderItems
-            .AsNoTracking()
-            .Include(i => i.Order)
-            .Include(i => i.Product)
-            .Where(i => i.Order.Status == OrderStatus.Completed && i.Order.CreatedAt >= startDate && i.Order.CreatedAt <= endDate && !i.Cancelled)
-            .GroupBy(i => new { i.ProductId, i.Product.Name, i.Product.Barcode })
+        // EF Core 8 không translate được GroupBy composite key (Id, Name, Barcode) từ join + aggregate
+        // theo navigation trong cùng query. Báo cáo theo thời gian có giới hạn (mặc định 30 ngày),
+        // số dòng OrderItem hoàn thành là nhỏ → lấy về group phía client (thủ tục đã ghi nhận).
+        var raw = await (
+            from oi in _context.OrderItems
+            join o in _context.Orders on oi.OrderId equals o.Id
+            join p in _context.Products on oi.ProductId equals p.Id
+            where o.Status == OrderStatus.Completed && o.CreatedAt >= startDate && o.CreatedAt <= endDate && !oi.Cancelled
+            select new { oi.ProductId, p.Name, p.Barcode, oi.Qty, oi.Total }
+        )
+        .ToListAsync();
+
+        var items = raw
+            .GroupBy(r => new { r.ProductId, r.Name, r.Barcode })
             .Select(g => new TopProductReportItem(
                 g.Key.ProductId,
                 g.Key.Name,
@@ -61,7 +69,7 @@ public class ReportService : IReportService
             ))
             .OrderByDescending(x => x.TotalRevenue)
             .Take(top)
-            .ToListAsync();
+            .ToList();
 
         return new TopProductsReportResponse(startDate, endDate, items);
     }

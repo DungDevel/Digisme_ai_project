@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Dto;
@@ -39,28 +41,61 @@ public class OrderService : IOrderService
     private readonly AppDbContext _db;
     private readonly ILogger<OrderService> _log;
     private readonly INotificationService? _notificationService;
+    private readonly Microsoft.Extensions.Configuration.IConfiguration? _configuration;
 
-    public OrderService(AppDbContext db, ILogger<OrderService> log, INotificationService? notificationService = null)
+    public OrderService(AppDbContext db, ILogger<OrderService> log, INotificationService? notificationService = null, Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
         _db = db;
         _log = log;
         _notificationService = notificationService;
+        _configuration = configuration;
     }
 
     public async Task<OrderCreatedResponse> CreateOrderAsync(int userId, CreateOrderRequest req, string? idempotencyKey)
     {
+        // ── Validate DeliveryMethod & ShippingFee ──
+        var deliveryMethod = string.IsNullOrWhiteSpace(req.DeliveryMethod) ? "instore" : req.DeliveryMethod.Trim().ToLowerInvariant();
+        if (deliveryMethod != "instore" && deliveryMethod != "shopdelivery" && deliveryMethod != "carrier")
+            throw new BusinessRuleException("Hình thức giao hàng không hợp lệ (chỉ nhận: instore, shopdelivery, carrier)");
+
+        decimal shippingFee = 0m;
+        if (deliveryMethod == "instore")
+        {
+            shippingFee = 0m;
+        }
+        else
+        {
+            if (req.ShippingFee.HasValue)
+            {
+                if (req.ShippingFee.Value < 0)
+                    throw new BusinessRuleException("Phí giao hàng không được âm");
+                shippingFee = RoundMoney(req.ShippingFee.Value);
+            }
+            else
+            {
+                shippingFee = 0m;
+            }
+        }
+
+        var requestHash = ComputeRequestHash(req);
+
         // ── Idempotency: client retry (F9 / network) → trả lại kết quả cũ ──
-        // P0-2: bước này chỉ là fast-path đọc. Chống race thật nằm TRONG transaction
-        // (placeholder insert ngay đầu — request song song cùng key bị unique constraint chặn).
         var hasKey = !string.IsNullOrWhiteSpace(idempotencyKey);
         if (hasKey)
         {
             var existing = await _db.IdempotencyRecords
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.Key == idempotencyKey && r.UserId == userId && r.ExpiresAt > DateTime.UtcNow);
-            if (existing is not null && existing.ResultJson is not null)
+            if (existing is not null)
             {
-                return JsonSerializer.Deserialize<OrderCreatedResponse>(existing.ResultJson, JsonOpts)!;
+                if (!string.IsNullOrEmpty(existing.RequestHash) && existing.RequestHash != requestHash)
+                {
+                    throw new ConflictException("Idempotency-Key đã được dùng cho nội dung khác");
+                }
+                if (existing.ResultJson is not null)
+                {
+                    return JsonSerializer.Deserialize<OrderCreatedResponse>(existing.ResultJson, JsonOpts)!;
+                }
             }
         }
 
@@ -107,6 +142,7 @@ public class OrderService : IOrderService
                         Key = idempotencyKey!,
                         UserId = userId,
                         Endpoint = IdempotencyEndpoint,
+                        RequestHash = requestHash,
                         ResultJson = null!, // placeholder — fill sau khi order tạo xong
                         StatusCode = 201,
                         ExpiresAt = DateTime.UtcNow.AddHours(24)
@@ -118,6 +154,7 @@ public class OrderService : IOrderService
                     // race: request song song cùng key đang giữ khóa → hủy tx,
                     // đọc lại record đã commit của request kia.
                     if (tx != null) await tx.RollbackAsync();
+                    else if (_db.Database.CurrentTransaction != null) await _db.Database.CurrentTransaction.RollbackAsync();
                     if (hasKey)
                     {
                         var winner = await _db.IdempotencyRecords
@@ -139,6 +176,10 @@ public class OrderService : IOrderService
             using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
             {
                 lockCmd!.CommandText = "SELECT \"Id\" FROM \"Products\" WHERE \"Id\" = ANY(@ids) ORDER BY \"Id\" FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
+                {
+                    lockCmd.Transaction = npgTx;
+                }
                 var p = new NpgsqlParameter("@ids", productIds);
                 lockCmd.Parameters.Add(p);
                 await lockCmd.ExecuteNonQueryAsync();
@@ -203,9 +244,40 @@ public class OrderService : IOrderService
             }
             subtotal = RoundMoney(subtotal);
 
-            // ── Discount: chặn âm & vượt subtotal ──
+            // ── Discount & VIP: chặn âm & vượt subtotal ──
             var discount = RoundMoney(req.Discount);
-            if (discount > subtotal) throw new BusinessRuleException("discount không được vượt subtotal");
+            if (req.CustomerId is > 0)
+            {
+                var cust = await _db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == req.CustomerId);
+                if (cust != null && cust.IsVip)
+                {
+                    decimal vipPercent = 5m;
+                    if (_configuration != null)
+                    {
+                        vipPercent = _configuration.GetValue<decimal>("VipDiscountPercent", 5m);
+                    }
+                    var vipDiscount = RoundMoney(subtotal * (vipPercent / 100m));
+                    discount = RoundMoney(req.Discount + vipDiscount);
+                }
+            }
+            if (discount > subtotal) discount = subtotal;
+
+            // Distribute discount across lines proportionally
+            decimal allocatedDiscount = 0m;
+            var lineDiscounts = new decimal[lines.Count];
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (i == lines.Count - 1)
+                {
+                    lineDiscounts[i] = discount - allocatedDiscount;
+                }
+                else
+                {
+                    var proportion = subtotal > 0 ? lines[i].LineTotal / subtotal : 0m;
+                    lineDiscounts[i] = RoundMoney(discount * proportion);
+                    allocatedDiscount += lineDiscounts[i];
+                }
+            }
 
             // ── Surcharges: chỉ áp surcharge AUTO đang hiệu lực ──
             var surchargeTotal = 0m;
@@ -235,10 +307,44 @@ public class OrderService : IOrderService
             }
             surchargeTotal = RoundMoney(surchargeTotal);
 
-            // ── Giá trị đơn: giá DB đã gồm VAT, base = tổng khách trả ──
-            var baseAmount = subtotal - discount + surchargeTotal; // = giá khách trả (gồm VAT)
-            var vat = RoundMoney(baseAmount * storeSetting.VatRatePercent / (100m + storeSetting.VatRatePercent));
+            // ── Giá trị đơn: giá DB đã gồm VAT, base = tổng khách trả + phí giao hàng ──
+            var baseAmount = subtotal - discount + surchargeTotal + shippingFee;
+            var vat = RoundMoney((subtotal - discount + surchargeTotal) * storeSetting.VatRatePercent / (100m + storeSetting.VatRatePercent));
             var total = baseAmount;
+
+            decimal allocatedSurcharge = 0m;
+            var lineSurcharges = new decimal[lines.Count];
+            for (int i = 0; i < lines.Count; i++)
+            {
+                if (i == lines.Count - 1)
+                {
+                    lineSurcharges[i] = surchargeTotal - allocatedSurcharge;
+                }
+                else
+                {
+                    var proportion = subtotal > 0 ? lines[i].LineTotal / subtotal : 0m;
+                    lineSurcharges[i] = RoundMoney(surchargeTotal * proportion);
+                    allocatedSurcharge += lineSurcharges[i];
+                }
+            }
+
+            var vatBaseTotal = (subtotal - discount + surchargeTotal);
+            decimal allocatedVat = 0m;
+            var lineVats = new decimal[lines.Count];
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var lineVatBase = lines[i].LineTotal - lineDiscounts[i] + lineSurcharges[i];
+                if (i == lines.Count - 1)
+                {
+                    lineVats[i] = vat - allocatedVat;
+                }
+                else
+                {
+                    var proportion = vatBaseTotal > 0 ? lineVatBase / vatBaseTotal : 0m;
+                    lineVats[i] = RoundMoney(vat * proportion);
+                    allocatedVat += lineVats[i];
+                }
+            }
 
             // ── Tiền đưa / thừa / nợ ──
             var paid = RoundMoney(req.PaidAmount);
@@ -290,16 +396,20 @@ public class OrderService : IOrderService
                 PaymentMethod = paymentMethod,
                 PaidAmount = paid,
                 Change = change,
+                DeliveryMethod = deliveryMethod,
+                ShippingFee = shippingFee,
                 Status = isCompleted ? OrderStatus.Completed : OrderStatus.Pending,
                 CompletedAt = isCompleted ? now : null
             };
-            order.Items = lines.Select(l => new OrderItem
+            order.Items = lines.Select((l, idx) => new OrderItem
             {
                 Order = order,
                 ProductId = l.Product.Id,
                 UnitId = l.UnitId,
                 Qty = l.Qty,
                 UnitPrice = l.UnitPrice,
+                LineDiscount = lineDiscounts[idx],
+                Vat = lineVats[idx],
                 Total = l.LineTotal
             }).ToList();
             _db.Orders.Add(order);
@@ -327,14 +437,15 @@ public class OrderService : IOrderService
                 });
             }
 
-            // ── Loyalty: 1 điểm/1000đ, đơn completed + có khách ──
+            // ── Loyalty: 1 điểm/1000đ, đơn completed + có khách (không tính trên phí vận chuyển) ──
             int? loyaltyEarned = null;
             if (isCompleted && req.CustomerId is > 0)
             {
                 var loyalty = await GetOrCreateLoyaltyAsync(req.CustomerId.Value);
-                loyaltyEarned = (int)(total / 1000m);
+                var goodsTotal = total - shippingFee;
+                loyaltyEarned = (int)(goodsTotal / 1000m);
                 loyalty.Points += loyaltyEarned.Value;
-                loyalty.LifetimeSpend += total;
+                loyalty.LifetimeSpend += goodsTotal;
             }
 
             // ── Ledger + PosLog ──
@@ -366,7 +477,8 @@ public class OrderService : IOrderService
                         ? unitNames.TryGetValue((l.Product.Id, BaseUnitId(units, l.Product.Id)), out var bn) ? bn : "cái"
                         : unitNames[(l.Product.Id, l.UnitId.Value)],
                     l.Qty, l.UnitPrice, l.LineTotal, l.Product.IsWeighed)).ToList(),
-                stockWarnings);
+                stockWarnings,
+                0m, 0, 0m, 0m, null, order.DeliveryMethod, order.ShippingFee);
 
             // ── P0-2: fill kết quả vào placeholder idempotency (đã insert đầu tx) ──
             // Cùng transaction với order → commit một lượt. Không cần Add lần 2.
@@ -414,10 +526,16 @@ public class OrderService : IOrderService
         // INSERT ... ON CONFLICT (day) DO UPDATE ... RETURNING — row lock tự giữ trong transaction,
         // 2 order cùng ngày không thể trùng nnnn (transaction-safe, không cần sequence).
         var conn = _db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await conn.OpenAsync();
         using var cmd = conn.CreateCommand() as NpgsqlCommand;
         cmd!.CommandText = "INSERT INTO \"invoice_day_counter\" (\"Day\", \"N\") VALUES (@day, 1) " +
                            "ON CONFLICT (\"Day\") DO UPDATE SET \"N\" = \"invoice_day_counter\".\"N\" + 1 " +
                            "RETURNING \"invoice_day_counter\".\"N\"";
+        if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
+        {
+            cmd.Transaction = npgTx;
+        }
         cmd.Parameters.Add(new NpgsqlParameter("@day", DateTime.UtcNow.ToString("yyyy-MM-dd")));
         var n = (int)(await cmd.ExecuteScalarAsync())!;
         return $"INV-{DateTime.UtcNow:yyyyMMdd}-{n:D4}";
@@ -451,6 +569,14 @@ public class OrderService : IOrderService
         {
             throw new BusinessRuleException($"Sản phẩm '{p.Name}' là hàng đếm — quy về đơn vị gốc phải ra số nguyên");
         }
+    }
+
+    private static string ComputeRequestHash(CreateOrderRequest req)
+    {
+        var json = JsonSerializer.Serialize(req);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToHexString(hash);
     }
 
     private static decimal RoundMoney(decimal v) => Math.Round(v, 0, MidpointRounding.AwayFromZero);

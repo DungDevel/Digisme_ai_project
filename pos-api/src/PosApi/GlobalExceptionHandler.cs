@@ -31,6 +31,10 @@ public class GlobalExceptionHandler
             // StockShortageException kế thừa BusinessRuleException nên được phủ bởi catch này.
             await Write(ctx, StatusCodes.Status400BadRequest, ex.Message);
         }
+        catch (ConflictException ex)
+        {
+            await Write(ctx, StatusCodes.Status409Conflict, ex.Message);
+        }
         catch (InvalidOperationException ex)
         {
             await Write(ctx, StatusCodes.Status400BadRequest, ex.Message);

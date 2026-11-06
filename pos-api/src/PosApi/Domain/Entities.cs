@@ -122,6 +122,10 @@ public class Customer
     public string Name { get; set; } = string.Empty;
     public string? Address { get; set; }
     public bool IsActive { get; set; } = true;
+    /// Cờ VIP do CRM gán thủ công — floor chiết khấu VIP lên mức Gold khi Loyalty.Tier thấp hơn.
+    public bool IsVip { get; set; }
+    public int? CustomerGroupId { get; set; }
+    public CustomerGroup? CustomerGroup { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public LoyaltyAccount? Loyalty { get; set; }
     public List<Debt> Debts { get; set; } = new();
@@ -183,10 +187,12 @@ public class Order
     public decimal Discount { get; set; }
     public decimal SurchargeTotal { get; set; }
     public decimal Vat { get; set; }
+    public decimal ShippingFee { get; set; } = 0m;
     public decimal Total { get; set; }
     public PaymentMethod PaymentMethod { get; set; }
     public decimal PaidAmount { get; set; }
     public decimal Change { get; set; }
+    public string DeliveryMethod { get; set; } = "instore";
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
@@ -205,6 +211,8 @@ public class OrderItem
     public int? UnitId { get; set; }          // đơn vị đã bán (khác gốc thì có conversion)
     public decimal Qty { get; set; }          // quy về đơn vị gốc, decimal(18,3)
     public decimal UnitPrice { get; set; }    // đơn giá tại thời điểm bán (đơn vị gốc)
+    public decimal LineDiscount { get; set; } = 0m;
+    public decimal Vat { get; set; } = 0m;
     public decimal Surcharge { get; set; }
     public decimal Total { get; set; }
     public decimal ReturnedQty { get; set; }
@@ -339,6 +347,42 @@ public class StockInItem
     public decimal Total { get; set; }
 }
 
+// ─────────────────────────── CustomerGroup ───────────────────────────
+
+public class CustomerGroup
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // unique, manual input
+    public string Name { get; set; } = string.Empty;
+    public bool IsSupplier { get; set; }                 // false = Customer Group, true = Supplier Group
+    public decimal DefaultDiscountRate { get; set; }     // 0..100
+    public int? ParentId { get; set; }
+    public CustomerGroup? Parent { get; set; }
+    public List<CustomerGroup> Children { get; set; } = new();
+    public List<Customer> Customers { get; set; } = new();
+    public List<Supplier> Suppliers { get; set; } = new();
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}
+
+// ─────────────────────────── Supplier ───────────────────────────
+
+public class Supplier
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;      // VD: NCC-00001 (unique)
+    public string Name { get; set; } = string.Empty;      // Unique case-insensitive giữa các active
+    public string? Phone { get; set; }
+    public string? Address { get; set; }
+    public string? TaxCode { get; set; }
+    public int? CustomerGroupId { get; set; }
+    public CustomerGroup? CustomerGroup { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? UpdatedAt { get; set; }
+}
+
 // ─────────────────────────── Store setting ───────────────────────────
 
 /// Dòng duy nhất (Id=1) — thông tin cửa hàng, KHÔNG hard-code trong API
@@ -364,6 +408,7 @@ public class IdempotencyRecord
     public string Key { get; set; } = string.Empty;          // header Idempotency-Key
     public int UserId { get; set; }
     public string Endpoint { get; set; } = string.Empty;     // vd: POST /api/v1/orders
+    public string? RequestHash { get; set; }                 // hash của request body
     public string? ResultJson { get; set; }                  // response của lần chạy đầu
     public int StatusCode { get; set; } = 200;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

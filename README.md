@@ -1,10 +1,10 @@
 # DigiSME POS — Backend & AI Service
 
-Bộ backend cho hệ thống POS bán lẻ SME, gồm **2 service**:
+Bộ backend cho hệ thống POS bán lẻ SME, gồm **2 service chính**:
 
 | Service | Công nghệ | Port | Vai trò |
 |---|---|---|---|
-| `pos-api` | ASP.NET Core 8 (C#) | `8000` | Nghiệp vụ chính: auth, bán hàng, kho, nhập kho, trả hàng, công nợ, khách hàng, thu chi |
+| `pos-api` | ASP.NET Core 8 (C#) | `8000` | Nghiệp vụ chính: auth, bán hàng, kho, nhập kho, trả hàng, công nợ, khách hàng, ca làm việc, báo cáo, VietQR & SignalR Realtime Hub (`/hubs/pos`) |
 | `ai-service` | FastAPI (Python 3.11+) | `8001` | OCR hóa đơn nhập kho + Copilot hỏi đáp dữ liệu |
 | PostgreSQL 16 | Docker | `5432` | Database chung `digism_pos` (21 bảng, 18 entity) |
 
@@ -109,7 +109,7 @@ Swagger UI: `http://localhost:8000/swagger`
 
 ## 6. Tổng quan các Module & Trạng thái
 
-Toàn bộ các module cốt lõi M1 đến M9 đã được triển khai và kiểm thử thành công:
+Toàn bộ các module cốt lõi M1 đến M9, Shifts, Reports, VietQR Payments và SignalR Realtime Backend Hub đã được triển khai và kiểm thử thành công:
 
 | Module | Chức năng chính | Trạng thái |
 |---|---|---|
@@ -123,6 +123,9 @@ Toàn bộ các module cốt lõi M1 đến M9 đã được triển khai và ki
 | **M8. CRM / Customers** | Tra cứu khách hàng theo SĐT (F2), tạo khách mới, tích điểm loyalty | ✅ Hoàn thành |
 | **M9. Debts** | Quản lý công nợ khách hàng, thu nợ một phần hoặc toàn bộ (`FOR UPDATE` transaction) | ✅ Hoàn thành |
 | **Shifts** | Quản lý ca làm việc (mở ca, xem ca hiện tại, đóng ca kiểm đếm tiền mặt, chênh lệch) | ✅ Hoàn thành |
+| **Reports** | Báo cáo nâng cao (doanh thu, top sản phẩm, phương thức thanh toán) | ✅ Hoàn thành |
+| **Payments & VietQR** | Tạo mã VietQR động QuickLink, xác nhận thanh toán thủ công (`ManagerOnly`) | ✅ Hoàn thành |
+| **SignalR Realtime Hub** | Hub `/hubs/pos`, `NotificationService`, dispatching sự kiện post-commit | ✅ Hoàn thành (Backend) |
 | **M10. AI Service** | FastAPI OCR & Copilot hỏi đáp dữ liệu POS | 🟡 Mock / Sẵn sàng |
 
 ---
@@ -136,21 +139,18 @@ DigiSME_AI_Project/
 ├── docs/api-contract.md        # API contract chi tiết từng module
 ├── pos-api/
 │   ├── src/PosApi/
-│   │   ├── Program.cs          # Bootstrap: DI, JWT, auto-migrate + seed
+│   │   ├── Program.cs          # Bootstrap: DI, JWT, auto-migrate + seed, SignalR Hub
+│   │   ├── Hubs/PosHub.cs      # SignalR Realtime WebSocket Hub (/hubs/pos)
 │   │   ├── Domain/             # Entities (21 bảng)
 │   │   ├── Data/               # AppDbContext & DbInitializer
-│   │   ├── Controllers/        # Auth, Health, Products, Orders, Carts, Customers, Returns, Inventory, StockIns, Debts
+│   │   ├── Controllers/        # Auth, Health, Products, Orders, Carts, Customers, Returns, Inventory, StockIns, Debts, Shifts, Reports, Payments
 │   │   ├── Dto/                # Request/response contracts
-│   │   └── Services/           # OrderService, StockInService, DebtService, InventoryService, ReturnService...
-│   └── tests/PosApi.Tests/     # Integration & Unit Tests (29/29 passed)
+│   │   └── Services/           # OrderService, NotificationService, ShiftService, PaymentService, DebtService, InventoryService...
+│   └── tests/PosApi.Tests/     # Integration & Unit Tests
 └── ai-service/
     ├── pyproject.toml          # FastAPI + uvicorn
     └── app/                    # OCR & Copilot routers
 ```
 
-## 8. Tiến độ & Lộ trình Sprint
-
-- **Sprint 1 — ✅ Hoàn thành** — Đặt hàng (`POST /orders` engine tính giá, idempotency, row locking, trừ kho atomic) · hold/resume cart · tra/tạo khách (F2) · audit log.
-- **Sprint 2 — ✅ Hoàn thành** — Nhập kho M7 (`POST /api/v1/stock-ins`, OCR, confirm), Trả hàng M5, Quản lý kho M6, Công nợ M9.
-- **Sprint 3 — ✅ Hoàn thành** — Ca làm việc (`/api/v1/shifts`) · Báo cáo nâng cao (`/api/v1/reports/*`) · Thanh toán VietQR động (`/api/v1/payments/*` — tạo mã QR QuickLink, xác nhận thanh toán thủ công phân quyền `ManagerOnly`).
-- **Sprint 4 (26/10 – 08/11/2026) — 🟡 Đang triển khai / Backend Verified** — SignalR Realtime Notifications (`/hubs/pos`): Đã hoàn thiện Hub backend, event dispatcher sau transaction commit (Orders, Payments, LowStock, Shifts) và unit/integration tests; chờ tích hợp client frontend hoàn chỉnh.
+## 8. Phạm vi dự án
+Dự án tập trung hoàn toàn vào **Backend & AI Service**. Giao diện Frontend (nếu có) là ứng dụng client bên ngoài, không nằm trong phạm vi phát triển hiện tại của repository này.

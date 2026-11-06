@@ -501,10 +501,11 @@ public class OrderServiceTests
     {
         var (context, tx) = _fixture.CreateContextWithTransaction();
         var (userId, product) = await SeedUserAndProduct(context, 100m, 10000m);
-        context.Surcharges.Add(new Surcharge { Name = "Phụ phí", Type = SurchargeType.Percent, Value = 10m, IsActive = true, ApplyMode = SurchargeApply.Auto });
+        var surcharge = new Surcharge { Name = "Phụ phí", Type = SurchargeType.Percent, Value = 10m, IsActive = true, ApplyMode = SurchargeApply.Auto };
+        context.Surcharges.Add(surcharge);
         await context.SaveChangesAsync();
 
-        var req = new CreateOrderRequest(null, "Cash", 200000m, 0m, new List<OrderSurchargeRequest> { new(1, 10m) }, new() { new(product.Id, null, 2, 10000m) });
+        var req = new CreateOrderRequest(null, "Cash", 200000m, 0m, new List<OrderSurchargeRequest> { new(surcharge.Id, 10m) }, new() { new(product.Id, null, 2, 10000m) });
         var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
         var res = await service.CreateOrderAsync(userId, req, null);
         var order = await context.Orders.Include(o => o.Items).FirstAsync(o => o.Id == res.Id);

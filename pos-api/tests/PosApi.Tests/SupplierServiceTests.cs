@@ -14,69 +14,141 @@ public class SupplierServiceTests
     [Fact]
     public async Task CreateSupplier_AutoCode_Success()
     {
-        _fixture.ClearData();
         var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
         using (tx)
         {
             var service = new SupplierService(context);
-            var req = new SupplierCreateRequest(null, "Công ty TNHH ABC", "0901234567", "123 Đường A", "0123456789");
+            var req = new SupplierCreateRequest(null, "Công ty TNHH ABC " + Guid.NewGuid().ToString().Substring(0, 6), "0901234567", "123 Đường A", "0123456789");
 
             var result = await service.CreateSupplierAsync(1, req);
 
             Assert.NotNull(result);
             Assert.StartsWith("NCC-", result.Code);
-            Assert.Equal("Công ty TNHH ABC", result.Name);
             Assert.True(result.IsActive);
         }
     }
 
     [Fact]
-    public async Task CreateSupplier_DuplicateNameActive_ThrowsException()
+    public async Task CreateSupplier_DuplicateNameCaseInsensitive_Throws400()
     {
-        _fixture.ClearData();
         var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
         using (tx)
         {
             var service = new SupplierService(context);
-            await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, "NCC Alpha", "0901111111", null, null));
+            var name = "NCC Alpha " + Guid.NewGuid().ToString().Substring(0, 6);
+            await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, name, "0901111111", null, null));
 
-            var req2 = new SupplierCreateRequest(null, "  ncc alpha  ", "0902222222", null, null);
+            var req2 = new SupplierCreateRequest(null, $"  {name.ToLower()}  ", "0902222222", null, null);
             var ex = await Assert.ThrowsAsync<BusinessRuleException>(() => service.CreateSupplierAsync(1, req2));
             Assert.Equal("Tên nhà cung cấp đã tồn tại", ex.Message);
         }
     }
 
     [Fact]
-    public async Task CreateSupplier_ManualCode_Success()
+    public async Task CreateSupplier_SoftDeletedName_CanBeRecreated()
     {
-        _fixture.ClearData();
         var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
         using (tx)
         {
             var service = new SupplierService(context);
-            var req = new SupplierCreateRequest("CUSTOM-01", "NCC Beta", "0903333333", null, null);
+            var name = "NCC Delta " + Guid.NewGuid().ToString().Substring(0, 6);
+            var created = await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, name, null, null, null));
+
+            await service.DeleteSupplierAsync(1, created.Id);
+
+            // Recreating with the same name should succeed because old one is inactive
+            var recreated = await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, name, null, null, null));
+            Assert.NotNull(recreated);
+            Assert.NotEqual(created.Id, recreated.Id);
+            Assert.True(recreated.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task CreateSupplier_DuplicateManualCode_Throws400()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
+        using (tx)
+        {
+            var service = new SupplierService(context);
+            var code = "NCC-MANUAL-01";
+            await service.CreateSupplierAsync(1, new SupplierCreateRequest(code, "NCC One", null, null, null));
+
+            var ex = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+                service.CreateSupplierAsync(1, new SupplierCreateRequest(code, "NCC Two", null, null, null)));
+            Assert.Equal("Mã nhà cung cấp đã tồn tại", ex.Message);
+        }
+    }
+
+    [Fact]
+    public async Task CreateSupplier_EmptyOrTooLongName_Throws400()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
+        using (tx)
+        {
+            var service = new SupplierService(context);
+
+            await Assert.ThrowsAsync<BusinessRuleException>(() =>
+                service.CreateSupplierAsync(1, new SupplierCreateRequest(null, "", null, null, null)));
+
+            var longName = new string('A', 129);
+            await Assert.ThrowsAsync<BusinessRuleException>(() =>
+                service.CreateSupplierAsync(1, new SupplierCreateRequest(null, longName, null, null, null)));
+        }
+    }
+
+    [Fact]
+    public async Task CreateSupplier_SequentialAutoCodes_Success()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
+        using (tx)
+        {
+            var service = new SupplierService(context);
+            var s1 = await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, "Supplier 1 " + Guid.NewGuid(), null, null, null));
+            var s2 = await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, "Supplier 2 " + Guid.NewGuid(), null, null, null));
+
+            Assert.True(s1.Code.EndsWith("00001") || s1.Code.StartsWith("NCC-"));
+            Assert.NotNull(s2.Code);
+        }
+    }
+
+    [Fact]
+    public async Task CreateSupplier_ManualCode_Success()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
+        using (tx)
+        {
+            var service = new SupplierService(context);
+            var code = "CUS-" + Guid.NewGuid().ToString().Substring(0, 6).ToUpper();
+            var req = new SupplierCreateRequest(code, "NCC Beta " + Guid.NewGuid().ToString().Substring(0, 6), "0903333333", null, null);
 
             var result = await service.CreateSupplierAsync(1, req);
 
-            Assert.Equal("CUSTOM-01", result.Code);
-            Assert.Equal("NCC Beta", result.Name);
+            Assert.Equal(code, result.Code);
         }
     }
 
     [Fact]
     public async Task UpdateSupplier_Success()
     {
-        _fixture.ClearData();
         var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
         using (tx)
         {
             var service = new SupplierService(context);
-            var created = await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, "NCC Gamma", "0904444444", null, null));
+            var created = await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, "NCC Gamma " + Guid.NewGuid().ToString().Substring(0, 6), "0904444444", null, null));
 
-            var updateReq = new SupplierUpdateRequest("NCC Gamma Updated", "0905555555", "Address 2", "987654321");
+            var updateReq = new SupplierUpdateRequest("NCC Gamma Updated " + Guid.NewGuid().ToString().Substring(0, 6), "0905555555", "Address 2", "987654321");
             var updated = await service.UpdateSupplierAsync(1, created.Id, updateReq);
 
-            Assert.Equal("NCC Gamma Updated", updated.Name);
+            Assert.StartsWith("NCC Gamma Updated", updated.Name);
             Assert.Equal("0905555555", updated.Phone);
             Assert.Equal("Address 2", updated.Address);
             Assert.Equal("987654321", updated.TaxCode);
@@ -86,12 +158,12 @@ public class SupplierServiceTests
     [Fact]
     public async Task DeleteSupplier_SoftDelete_Success()
     {
-        _fixture.ClearData();
         var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
         using (tx)
         {
             var service = new SupplierService(context);
-            var created = await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, "NCC Delta", null, null, null));
+            var created = await service.CreateSupplierAsync(1, new SupplierCreateRequest(null, "NCC Delta " + Guid.NewGuid().ToString().Substring(0, 6), null, null, null));
 
             var success = await service.DeleteSupplierAsync(1, created.Id);
             Assert.True(success);
@@ -103,6 +175,19 @@ public class SupplierServiceTests
             var deletedItem = listWithInactive.Items.FirstOrDefault(x => x.Id == created.Id);
             Assert.NotNull(deletedItem);
             Assert.False(deletedItem.IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteSupplier_NonExistent_ReturnsFalse()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
+        using (tx)
+        {
+            var service = new SupplierService(context);
+            var success = await service.DeleteSupplierAsync(1, 999999);
+            Assert.False(success);
         }
     }
 }

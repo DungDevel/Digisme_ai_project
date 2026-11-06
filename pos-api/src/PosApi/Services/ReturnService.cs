@@ -59,6 +59,18 @@ public class ReturnService : IReturnService
                 await lockCmd.ExecuteNonQueryAsync();
             }
 
+            if (order.CustomerId.HasValue)
+            {
+                using var loyaltyLockCmd = conn.CreateCommand() as NpgsqlCommand;
+                loyaltyLockCmd!.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx2)
+                {
+                    loyaltyLockCmd.Transaction = npgTx2;
+                }
+                loyaltyLockCmd.Parameters.Add(new NpgsqlParameter("@custid", order.CustomerId.Value));
+                await loyaltyLockCmd.ExecuteNonQueryAsync();
+            }
+
             // Re-fetch items to get fresh state after lock
             var orderItems = await _db.OrderItems
                 .Include(oi => oi.Product)
@@ -99,7 +111,7 @@ public class ReturnService : IReturnService
                 }
                 else
                 {
-                    itemReturnTotal = Math.Round((netLineTotal / oi.Qty) * reqItem.Qty, 2, MidpointRounding.AwayFromZero);
+                    itemReturnTotal = Math.Round((netLineTotal / oi.Qty) * reqItem.Qty, 0, MidpointRounding.AwayFromZero);
                 }
 
                 totalReturnedAmount += itemReturnTotal;
@@ -135,6 +147,62 @@ public class ReturnService : IReturnService
                 Items = returnItems
             };
             _db.Returns.Add(returnRecord);
+
+            // ── Loyalty Points Revocation & LifetimeSpend Update ──
+            decimal goodsRefunded = returnItems.Sum(ri => ri.Total);
+            if (order.CustomerId.HasValue && order.Status == OrderStatus.Completed)
+            {
+                var loyalty = await _db.LoyaltyAccounts.FirstOrDefaultAsync(l => l.CustomerId == order.CustomerId.Value);
+                if (loyalty != null)
+                {
+                    if (goodsRefunded > 0)
+                    {
+                        loyalty.LifetimeSpend = Math.Max(0m, loyalty.LifetimeSpend - goodsRefunded);
+                    }
+
+                    if (order.LoyaltyEarned > 0)
+                    {
+                        var goodsTotalOfOrder = order.Total - order.ShippingFee;
+                        int revoke = 0;
+                        if (isFullOrderReturn)
+                        {
+                            revoke = order.LoyaltyEarned - order.LoyaltyRevoked;
+                        }
+                        else if (goodsTotalOfOrder > 0)
+                        {
+                            revoke = (int)Math.Floor(order.LoyaltyEarned * (goodsRefunded / goodsTotalOfOrder));
+                        }
+                        revoke = Math.Min(revoke, order.LoyaltyEarned - order.LoyaltyRevoked);
+                        revoke = Math.Max(0, revoke);
+
+                        if (revoke > 0)
+                        {
+                            order.LoyaltyRevoked += revoke;
+                            int shortfall = 0;
+                            if (loyalty.Points < revoke)
+                            {
+                                shortfall = revoke - loyalty.Points;
+                                loyalty.Points = 0;
+                            }
+                            else
+                            {
+                                loyalty.Points -= revoke;
+                            }
+
+                            _db.PointTransactions.Add(new PointTransaction
+                            {
+                                LoyaltyAccount = loyalty,
+                                Order = order,
+                                ReturnRecord = returnRecord,
+                                Type = PointTransactionType.Revoke,
+                                Points = -revoke,
+                                Shortfall = shortfall,
+                                Note = $"Thu hồi điểm trả hàng {returnCode}"
+                            });
+                        }
+                    }
+                }
+            }
 
             // 3. Restore Stock & Write Ledger
             foreach (var ri in returnItems)

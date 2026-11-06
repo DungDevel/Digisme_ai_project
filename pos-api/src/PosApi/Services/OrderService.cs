@@ -443,9 +443,20 @@ public class OrderService : IOrderService
             {
                 var loyalty = await GetOrCreateLoyaltyAsync(req.CustomerId.Value);
                 var goodsTotal = total - shippingFee;
-                loyaltyEarned = (int)(goodsTotal / 1000m);
-                loyalty.Points += loyaltyEarned.Value;
+                int earnedPoints = (int)(goodsTotal / 1000m);
+                loyaltyEarned = earnedPoints;
+                loyalty.Points += earnedPoints;
                 loyalty.LifetimeSpend += goodsTotal;
+
+                order.LoyaltyEarned = earnedPoints;
+                _db.PointTransactions.Add(new PointTransaction
+                {
+                    LoyaltyAccount = loyalty,
+                    Order = order,
+                    Type = PointTransactionType.Earn,
+                    Points = earnedPoints,
+                    Note = $"Tích điểm đơn hàng {code}"
+                });
             }
 
             // ── Ledger + PosLog ──
@@ -471,7 +482,7 @@ public class OrderService : IOrderService
                 order.PaidAmount, order.Change, amountOwed,
                 order.Status.ToString().ToLowerInvariant(),
                 loyaltyEarned, order.CompletedAt ?? now,
-                lines.Select(l => new OrderLineResponse(
+                lines.Select((l, idx) => new OrderLineResponse(
                     l.Product.Id, l.Product.Name, l.UnitId,
                     l.UnitId is null
                         ? unitNames.TryGetValue((l.Product.Id, BaseUnitId(units, l.Product.Id)), out var bn) ? bn : "cái"

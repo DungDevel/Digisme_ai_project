@@ -552,4 +552,23 @@ public class OrderServiceTests
         Assert.Equal(order.Discount, order.Items.Sum(i => i.LineDiscount));
         await tx.RollbackAsync();
     }
+
+    [Fact]
+    public async Task CreateOrder_WritesEarnPointTransaction()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var (userId, product) = await SeedUserAndProduct(context, 100m, 10000m);
+        var cust = new Customer { Name = "C", Phone = "09" + Guid.NewGuid().ToString().Substring(0, 8), IsActive = true };
+        context.Customers.Add(cust);
+        await context.SaveChangesAsync();
+
+        var req = new CreateOrderRequest(cust.Id, "Cash", 200000m, 0m, new(), new() { new(product.Id, null, 10, 10000m) });
+        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        await service.CreateOrderAsync(userId, req, null);
+
+        var pt = await context.PointTransactions.FirstOrDefaultAsync(t => t.Type == PointTransactionType.Earn);
+        Assert.NotNull(pt);
+        Assert.Equal(100, pt.Points);
+        await tx.RollbackAsync();
+    }
 }

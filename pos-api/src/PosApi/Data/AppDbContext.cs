@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<Shift> Shifts => Set<Shift>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<OrderImage> OrderImages => Set<OrderImage>();
     public DbSet<HeldCart> HeldCarts => Set<HeldCart>();
     public DbSet<ReturnRecord> Returns => Set<ReturnRecord>();
     public DbSet<ReturnItem> ReturnItems => Set<ReturnItem>();

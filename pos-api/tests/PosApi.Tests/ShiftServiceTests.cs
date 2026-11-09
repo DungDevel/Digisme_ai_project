@@ -102,12 +102,45 @@ public class ShiftServiceTests : IAsyncLifetime
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
 
-        var closed = await service.CloseShiftAsync(user.Id, 1150000m);
+        var closed = await service.CloseShiftAsync(user.Id, 1150000m, "Thừa quỹ do khách boa");
 
         Assert.NotNull(closed);
         Assert.Equal("Closed", closed.Status);
         Assert.Equal(1100000m, closed.ExpectedCash);
         Assert.Equal(1150000m, closed.CountedCash);
         Assert.Equal(50000m, closed.Diff);
+        Assert.Equal("Thừa quỹ do khách boa", closed.Note);
+    }
+
+    [Fact]
+    public async Task GetShiftSummary_Success()
+    {
+        var user = await SeedUserAsync();
+        var service = new ShiftService(_context!);
+
+        await service.OpenShiftAsync(user.Id, 1000000m);
+        var shift = await _context.Shifts.FirstAsync(s => s.UserId == user.Id && s.Status == ShiftStatus.Open);
+
+        var order = new Order
+        {
+            Code = "INV-002",
+            CashierId = user.Id,
+            ShiftId = shift.Id,
+            Subtotal = 200000m,
+            Total = 200000m,
+            PaymentMethod = PaymentMethod.Cash,
+            PaidAmount = 200000m,
+            Change = 0m,
+            Status = OrderStatus.Completed
+        };
+        _context.Orders.Add(order);
+        await _context.SaveChangesAsync();
+
+        var summary = await service.GetShiftSummaryAsync(user.Id);
+        Assert.NotNull(summary);
+        Assert.Equal(1000000m, summary.OpeningCash);
+        Assert.Equal(200000m, summary.CashSales);
+        Assert.Equal(1200000m, summary.ExpectedCash);
+        Assert.Single(summary.Orders);
     }
 }

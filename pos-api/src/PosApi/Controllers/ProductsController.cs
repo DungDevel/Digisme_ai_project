@@ -1,7 +1,7 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using PosApi.Data;
 using PosApi.Dto;
+using PosApi.Services;
 
 namespace PosApi.Controllers;
 
@@ -9,39 +9,28 @@ namespace PosApi.Controllers;
 [Route("api/v1/products")]
 public class ProductsController : ControllerBase
 {
-    private readonly AppDbContext _db;
-    public ProductsController(AppDbContext db) => _db = db;
+    private readonly IProductService _productService;
 
-    /// <summary>
-    /// Tra cứu nhanh theo mã vạch — Sprint 1 yêu cầu p99 &lt; 50ms.
-    /// Query đơn bảng, index unique trên barcode, không JOIN ngoài category name.
-    /// </summary>
+    public ProductsController(IProductService productService)
+    {
+        _productService = productService;
+    }
+
+    private int UserId => User.Identity?.IsAuthenticated == true
+        ? int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value)
+        : 1;
+
     [HttpGet("barcode/{code}")]
     [ProducesResponseType(typeof(ProductLookupResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ByBarcode(string code)
     {
-        var p = await _db.Products
-            .Include(x => x.Category)
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Barcode == code);
-
-        if (p is null || !p.IsActive)
+        var result = await _productService.GetByBarcodeAsync(code);
+        if (result == null)
             return NotFound(new { error = $"Không tìm thấy sản phẩm với mã '{code}'" });
-
-        var baseUnit = await _db.ProductUnits
-            .AsNoTracking()
-            .Include(x => x.Unit)
-            .FirstOrDefaultAsync(x => x.ProductId == p.Id && x.IsBase);
-
-        return Ok(new ProductLookupResponse(
-            p.Id, p.Name, p.Barcode, p.CategoryId, p.Category.Name,
-            p.RetailPrice, p.WholesalePrice, p.MemberPrice,
-            p.CurrentStock, baseUnit?.Unit?.Name ?? "cái",
-            p.CurrentStock <= p.MinStock, p.IsWeighed));
+        return Ok(result);
     }
 
-    /// <summary>Tìm kiếm + phân trang (keyset bằng page/size), filter theo nhóm.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedProductResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
@@ -50,31 +39,33 @@ public class ProductsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
-        if (pageSize is < 1 or > 100) pageSize = 20;
-        if (page < 1) page = 1;
+        var result = await _productService.SearchAsync(q, categoryId, page, pageSize);
+        return Ok(result);
+    }
 
-        var query = _db.Products.AsNoTracking().Include(x => x.Category).Where(x => x.IsActive);
-        if (!string.IsNullOrWhiteSpace(q))
-            query = query.Where(x => x.Name.Contains(q) || x.Barcode.Contains(q));
-        if (categoryId is > 0)
-            query = query.Where(x => x.CategoryId == categoryId.Value);
+    [HttpPost]
+    [Authorize(Policy = "ManagerOnly")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Create([FromForm] ProductCreateRequest req, IFormFile? imageFile)
+    {
+        var id = await _productService.CreateAsync(req, UserId, imageFile);
+        return CreatedAtAction(nameof(ByBarcode), new { code = req.Barcode }, new { id });
+    }
 
-        var total = await query.CountAsync();
-        var items = await query
-            .OrderBy(x => x.Name)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
+    [HttpPut("{id:int}")]
+    [Authorize(Policy = "ManagerOnly")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Update(int id, [FromForm] ProductUpdateRequest req, IFormFile? imageFile)
+    {
+        await _productService.UpdateAsync(id, req, UserId, imageFile);
+        return NoContent();
+    }
 
-        var unitIds = items.Select(i => i.Id).ToList();
-        var baseUnits = await _db.ProductUnits.AsNoTracking()
-            .Include(x => x.Unit)
-            .Where(x => x.IsBase && unitIds.Contains(x.ProductId))
-            .ToDictionaryAsync(x => x.ProductId);
-
-        return Ok(new PagedProductResponse(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize),
-            items.Select(p => new ProductBrief(
-                p.Id, p.Name, p.Barcode, p.Category.Name, p.RetailPrice, p.CurrentStock,
-                baseUnits.TryGetValue(p.Id, out var u) ? u.Unit?.Name ?? "cái" : "cái")).ToList()));
+    [HttpDelete("{id:int}")]
+    [Authorize(Policy = "ManagerOnly")]
+    public async Task<IActionResult> Delete(int id)
+    {
+        await _productService.DeleteAsync(id, UserId);
+        return NoContent();
     }
 }

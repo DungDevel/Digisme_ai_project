@@ -13,20 +13,25 @@ public record AuthResponse(string AccessToken, string Username, string FullName,
 public record ForgotPasswordResponse(string Message, int ValidMinutes);
 
 // ── Products (mẫu Sprint 1) ──
+public record ProductCreateRequest(string Name, int CategoryId, string Barcode, decimal CostPrice, decimal RetailPrice, decimal WholesalePrice, decimal MemberPrice, decimal MinStock, bool IsWeighed, string? ImageUrl);
+public record ProductUpdateRequest(string Name, int CategoryId, decimal CostPrice, decimal RetailPrice, decimal WholesalePrice, decimal MemberPrice, decimal MinStock, bool IsWeighed, string? ImageUrl, bool IsActive);
 public record ProductLookupResponse(
     int Id, string Name, string Barcode, int CategoryId, string CategoryName,
     decimal RetailPrice, decimal WholesalePrice, decimal MemberPrice,
-    decimal Stock, string BaseUnit, bool BelowMinStock, bool IsWeighed);
+    decimal Stock, string BaseUnit, bool BelowMinStock, bool IsWeighed, string? ImageUrl);
 
 public record PagedProductResponse(int Page, int PageSize, int Total, int TotalPages, List<ProductBrief> Items);
-public record ProductBrief(int Id, string Name, string Barcode, string CategoryName, decimal RetailPrice, decimal Stock, string BaseUnit);
+public record ProductBrief(int Id, string Name, string Barcode, string CategoryName, decimal RetailPrice, decimal Stock, string BaseUnit, string? ImageUrl);
 
 // ── Orders (Sprint 1) ──
 public record OrderSurchargeRequest(int SurchargeId, decimal? OverrideValue);
 public record OrderItemRequest(int ProductId, int? UnitId, decimal Qty, decimal? UnitPrice);
 public record CreateOrderRequest(int? CustomerId, string PaymentMethod, decimal PaidAmount, decimal Discount,
     List<OrderSurchargeRequest> Surcharges, List<OrderItemRequest> Items, string? DeliveryMethod = "instore", decimal? ShippingFee = 0m);
-public record OrderLineResponse(int ProductId, string ProductName, int? UnitId, string UnitName,
+public record OrderUpdateRequest(int? CustomerId, string? Note, List<OrderItemRequest> Items, decimal? Discount);
+public record OrderImageUploadRequest(string ImageType, IFormFile File);
+public record OrderImageResponse(int Id, string ImageUrl, string ImageType, DateTime CreatedAt);
+public record OrderLineResponse(int Id, int ProductId, string ProductName, int? UnitId, string UnitName,
     decimal Qty, decimal UnitPrice, decimal LineTotal, bool IsWeighed);
 /// <summary>
 /// OrderCreatedResponse — Nhóm 1 (Đơn Bán Hàng chiều sâu) bổ sung:
@@ -59,6 +64,83 @@ public record OrderCreatedResponse(
     public List<DebtPayResult> DebtPayments { get; init; } = DebtPayments ?? new();
 }
 
+public record OrderSummaryResponse(
+    int Id,
+    string Code,
+    int CashierId,
+    string CashierName,
+    int? CustomerId,
+    string? CustomerName,
+    int? ShiftId,
+    decimal Subtotal,
+    decimal Discount,
+    decimal SurchargeTotal,
+    decimal Vat,
+    decimal ShippingFee,
+    decimal Total,
+    string PaymentMethod,
+    decimal PaidAmount,
+    decimal Change,
+    string Status,
+    int ItemCount,
+    DateTime CreatedAt,
+    DateTime? CompletedAt);
+
+public record PagedOrderResponse(
+    int Page,
+    int PageSize,
+    int Total,
+    int TotalPages,
+    List<OrderSummaryResponse> Items);
+
+public record OrderItemDetailResponse(
+    int OrderItemId,
+    int ProductId,
+    string ProductName,
+    string Barcode,
+    int? UnitId,
+    string UnitName,
+    decimal Qty,
+    decimal UnitPrice,
+    decimal LineDiscount,
+    decimal Total,
+    bool IsWeighed);
+
+public record OrderPaymentBriefResponse(
+    int Id,
+    string Method,
+    decimal Amount,
+    string Status,
+    string? Reference,
+    DateTime? PaidAt);
+
+public record OrderDetailResponse(
+    int Id,
+    string Code,
+    int CashierId,
+    string CashierName,
+    int? CustomerId,
+    string? CustomerName,
+    string? CustomerPhone,
+    int? ShiftId,
+    decimal Subtotal,
+    decimal Discount,
+    decimal SurchargeTotal,
+    decimal Vat,
+    decimal ShippingFee,
+    decimal Total,
+    string PaymentMethod,
+    decimal PaidAmount,
+    decimal Change,
+    string DeliveryMethod,
+    string Status,
+    int LoyaltyEarned,
+    int LoyaltyRevoked,
+    DateTime CreatedAt,
+    DateTime? CompletedAt,
+    List<OrderItemDetailResponse> Items,
+    List<OrderPaymentBriefResponse> Payments);
+
 // ── Hold cart (Sprint 1) ──
 public record HoldCartRequest(int? CustomerId, string? Note, List<OrderItemRequest> Items);
 public record HeldCartResponse(int Id, int? CustomerId, string Note, decimal Subtotal, DateTime CreatedAt, DateTime ExpiresAt);
@@ -67,6 +149,7 @@ public record ResumeCartResponse(int Id, int? CustomerId, string Note, decimal S
 
 // ── Customers (Sprint 1) ──
 public record CustomerCreateRequest(string Phone, string Name, string? Address);
+public record CustomerUpdateRequest(string Name, string? Address, bool IsActive);
 public record CustomerResponse(int Id, string Phone, string Name, string? Address, bool IsActive, int Points, string Tier, decimal TotalDebt);
 public record PagedCustomerResponse(int Page, int PageSize, int Total, int TotalPages, List<CustomerResponse> Items);
 
@@ -101,9 +184,23 @@ public record StockInCreatedResponse(int Id, string Code, decimal Total, DateTim
 
 // ── Shifts (Sprint 3) ──
 public record OpenShiftRequest(decimal OpeningCash);
-public record CloseShiftRequest(decimal CountedCash);
-public record ShiftResponse(int Id, int UserId, string Username, DateTime StartedAt, DateTime? EndedAt, string Status, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Diff);
+public record CloseShiftRequest(decimal CountedCash, string? Note);
+public record ShiftResponse(int Id, int UserId, string Username, DateTime StartedAt, DateTime? EndedAt, string Status, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Diff, string? Note);
 public record PagedShiftResponse(int Page, int PageSize, int Total, int TotalPages, List<ShiftResponse> Items);
+public record ShiftOrderBrief(int Id, string Code, decimal Total, string PaymentMethod, DateTime CreatedAt);
+public record ShiftSummaryResponse(
+    int ShiftId,
+    int UserId,
+    string Username,
+    DateTime StartedAt,
+    decimal OpeningCash,
+    decimal CashSales,
+    decimal CashReceipts,
+    decimal CashPayments,
+    decimal ExpectedCash,
+    int TotalOrders,
+    List<ShiftOrderBrief> Orders
+);
 
 // ── Reports (Sprint 3) ──
 public record SalesReportResponse(

@@ -1,0 +1,233 @@
+import json
+import random
+import uuid
+from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
+import psycopg
+from psycopg import sql
+from psycopg.extras import execute_values
+from faker import Faker
+
+# Configuration
+CONFIG_PATH = Path("seed.config.json")
+LOG_PATH = Path("seed_log.txt")
+
+def load_config():
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+class DigiSMESeeder:
+    def __init__(self, config, dry_run=False):
+        self.config = config
+        self.dry_run = dry_run
+        self.fake = Faker('vi_VN')
+        random.seed(config["seed_value"])
+
+        # Connection - Default to Docker Dev
+        self.conn_str = "host=localhost port=5432 dbname=digism_pos user=postgres password=postgres"
+        self.conn = None
+
+        # Internal caches for IDs to maintain consistency
+        self.ids = {
+            "users": [], "categories": [], "products": [], "suppliers": [],
+            "warehouses": [], "customers": [], "shifts": [], "roles": []
+        }
+
+    def connect(self):
+        if not self.dry_run:
+            self.conn = psycopg.connect(self.conn_str, autocommit=False)
+
+    def log(self, message):
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
+
+    def bulk_insert(self, table, columns, data):
+        if not data: return
+        if self.dry_run:
+            self.log(f"[Dry Run] Would insert {len(data)} rows into {table}")
+            return
+
+        with self.conn.cursor() as cur:
+            query = sql.SQL("INSERT INTO {table} ({cols}) VALUES %s").format(
+                table=sql.Identifier(table),
+                cols=sql.SQL(", ").join(map(sql.Identifier, columns))
+            )
+            execute_values(cur, query, data)
+
+    def get_all_ids(self, table):
+        if self.dry_run: return []
+        with self.conn.cursor() as cur:
+            cur.execute(sql.SQL("SELECT id FROM {table}").format(table=sql.Identifier(table)))
+            return [row[0] for row in cur.fetchall()]
+
+    def generate_timestamp(self, start_date, end_date):
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        delta = end - start
+        random_days = random.randrange(delta.days)
+        date = start + timedelta(days=random_days)
+
+        hour_probs = [0.01]*24
+        for h in range(11, 14): hour_probs[h] = 0.15
+        for h in range(17, 21): hour_probs[h] = 0.20
+
+        hour = random.choices(range(24), weights=hour_probs)[0]
+        return datetime(date.year, date.month, date.day, hour, random.randint(0, 59), random.randint(0, 59))
+
+    def seed_roles_and_users(self):
+        self.log("Seeding Roles and Users...")
+        # Roles are usually fixed in seed or migration
+        roles = [("Admin", 1), ("Store Manager", 2), ("Accountant", 3), ("Cashier", 4)]
+        # Assuming roles already exist in DB from migration. If not, insert here.
+
+        user_data = []
+        # Fixed roles users
+        for role_name, role_id in roles:
+            user_data.append((f"{role_name.lower()}_test", "hashed_password_123", f"{role_name} Test", f"test_{role_name.lower()}@example.com", "Active"))
+
+        # Random users
+        for i in range(self.config["entities"]["users"] - len(roles)):
+            user_data.append((f"user_{i}", "hashed_password_123", self.fake.name(), self.fake.email(), "Active"))
+
+        self.bulk_insert("Users", ["username", "password_hash", "full_name", "email", "status"], user_data)
+        self.ids["users"] = self.get_all_ids("Users")
+
+    def seed_catalog(self):
+        self.log("Seeding Catalog...")
+        # Categories
+        cats = [[f"Category {i}"] for i in range(self.config["entities"]["categories"])]
+        self.bulk_insert("Categories", ["name"], cats)
+        cat_ids = self.get_all_ids("Categories")
+
+        # Products
+        products = []
+        for i in range(self.config["entities"]["products"]):
+            retail = Decimal(random.randrange(5000, 500000)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            products.append((
+                self.fake.word(), random.choice(cat_ids), f"893{random.randint(1000000000, 9999999999)}",
+                retail * Decimal("0.7"), retail, retail * Decimal("0.9"), retail * Decimal("0.8"),
+                random.randint(1, 100), random.choice([True, False]), True
+            ))
+        self.bulk_insert("Products", ["name", "category_id", "barcode", "cost_price", "retail_price", "wholesale_price", "member_price", "min_stock", "is_weighed", "is_active"], products)
+        self.ids["products"] = self.get_all_ids("Products")
+
+    def seed_customers(self):
+        self.log("Seeding Customers...")
+        cust_data = []
+        for i in range(self.config["entities"]["customers"]):
+            cust_data.append((self.fake.name(), f"0900000{random.randint(1000, 9999)}", self.fake.address(), random.choice([True, False]), True))
+        self.bulk_insert("Customers", ["name", "phone", "address", "is_vip", "is_active"], cust_data)
+        self.ids["customers"] = self.get_all_ids("Customers")
+
+    def seed_inventory_base(self):
+        self.log("Seeding Inventory Base...")
+        # Suppliers
+        supps = [[self.fake.company()] for _ in range(self.config["entities"]["suppliers"])]
+        self.bulk_insert("Suppliers", ["name"], supps)
+        supp_ids = self.get_all_ids("Suppliers")
+
+        # Warehouses
+        whs = [[f"Warehouse {i}"] for i in range(self.config["entities"]["stores"])]
+        self.bulk_insert("Warehouses", ["name"], whs)
+        wh_ids = self.get_all_ids("Warehouses")
+
+        # Initial Stock
+        stock_data = []
+        for p_id in self.ids["products"]:
+            for w_id in wh_ids:
+                stock_data.append((p_id, w_id, random.randint(10, 1000)))
+        self.bulk_insert("WarehouseStocks", ["product_id", "warehouse_id", "current_stock"], stock_data)
+
+    def seed_sales_and_logs(self):
+        self.log("Seeding Sales and Logs (The Heavy Part)...")
+        # Shifts
+        shifts = []
+        for i in range(self.config["entities"]["shifts"]):
+            shifts.append((random.choice(self.ids["users"]), self.generate_timestamp(self.config["start_date"], self.config["end_date"]), "Open"))
+        self.bulk_insert("Shifts", ["user_id", "start_time", "status"], shifts)
+        shift_ids = self.get_all_ids("Shifts")
+
+        # Orders
+        order_data = []
+        order_items = []
+        stock_ledger = []
+        pos_logs = []
+
+        start_date = self.config["start_date"]
+        end_date = self.config["end_date"]
+
+        for i in range(self.config["entities"]["orders"]):
+            # Randomize Order
+            cust_id = random.choice(self.ids["customers"])
+            user_id = random.choice(self.ids["users"])
+            shift_id = random.choice(shift_ids)
+            timestamp = self.generate_timestamp(start_date, end_date)
+
+            # Simulating logic: Order ID is usually auto-inc, but we need it for items
+            # In a real seeder, we might use RETURNING id or estimate
+            order_id = i + 1
+
+            # Order Header
+            total = Decimal("0")
+            items_count = random.randint(1, 10)
+
+            # Items
+            for _ in range(items_count):
+                p_id = random.choice(self.ids["products"])
+                qty = random.randint(1, 5)
+                # Price fetch simulation
+                price = Decimal(random.randrange(5000, 50000))
+                line_total = price * qty
+                total += line_total
+
+                order_items.append((order_id, p_id, qty, price))
+                # Stock Ledger entry for each item sold
+                stock_ledger.append((p_id, 1, "SALE", -qty, timestamp))
+
+            # Order Header final
+            order_data.append((cust_id, "Cash", total, 0, timestamp, shift_id, user_id, "Completed"))
+
+            # PosLog for the order
+            pos_logs.append((user_id, "ORDER_CREATED", f"Order #{order_id}", timestamp))
+
+            # Bulk insert periodically to avoid memory overflow
+            if len(order_items) >= 10000:
+                self.bulk_insert("Orders", ["customer_id", "payment_method", "total_amount", "discount", "created_at", "shift_id", "user_id", "status"], order_data)
+                self.bulk_insert("OrderItems", ["order_id", "product_id", "quantity", "unit_price"], order_items)
+                self.bulk_insert("StockLedger", ["product_id", "warehouse_id", "type", "quantity", "created_at"], stock_ledger)
+                self.bulk_insert("PosLogs", ["user_id", "event_type", "details", "created_at"], pos_logs)
+                order_data, order_items, stock_ledger, pos_logs = [], [], [], []
+
+        # Final flush
+        self.bulk_insert("Orders", ["customer_id", "payment_method", "total_amount", "discount", "created_at", "shift_id", "user_id", "status"], order_data)
+        self.bulk_insert("OrderItems", ["order_id", "product_id", "quantity", "unit_price"], order_items)
+        self.bulk_insert("StockLedger", ["product_id", "warehouse_id", "type", "quantity", "created_at"], stock_ledger)
+        self.bulk_insert("PosLogs", ["user_id", "event_type", "details", "created_at"], pos_logs)
+
+    def run(self):
+        try:
+            self.connect()
+            self.seed_roles_and_users()
+            self.seed_catalog()
+            self.seed_customers()
+            self.seed_inventory_base()
+            self.seed_sales_and_logs()
+
+            if not self.dry_run:
+                self.conn.commit()
+            self.log("Seeding completed successfully!")
+        except Exception as e:
+            if self.conn: self.conn.rollback()
+            self.log(f"ERROR: {str(e)}")
+            raise e
+        finally:
+            if self.conn: self.conn.close()
+
+if __name__ == "__main__":
+    import sys
+    dry = "--dry-run" in sys.argv
+    cfg = load_config()
+    seeder = DigiSMESeeder(cfg, dry_run=dry)
+    seeder.run()

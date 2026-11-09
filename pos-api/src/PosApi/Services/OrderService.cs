@@ -31,6 +31,12 @@ namespace PosApi.Services;
 public interface IOrderService
 {
     Task<OrderCreatedResponse> CreateOrderAsync(int userId, CreateOrderRequest req, string? idempotencyKey);
+    Task<PagedOrderResponse> GetOrdersAsync(DateTime? fromDate, DateTime? toDate, int? customerId, int? cashierId, int? shiftId, OrderStatus? status, PaymentMethod? paymentMethod, int page, int pageSize);
+    Task<OrderDetailResponse> GetOrderByIdAsync(int id);
+    Task UpdateOrderAsync(int id, OrderUpdateRequest req, int userId);
+    Task CancelOrderAsync(int id, int userId, string reason);
+    Task<OrderImageResponse> AddOrderImageAsync(int orderId, int userId, OrderImageUploadRequest req);
+    Task DeleteOrderImageAsync(int imageId, int userId);
 }
 
 public class OrderService : IOrderService
@@ -42,11 +48,13 @@ public class OrderService : IOrderService
     private readonly ILogger<OrderService> _log;
     private readonly INotificationService? _notificationService;
     private readonly Microsoft.Extensions.Configuration.IConfiguration? _configuration;
+    private readonly IFileStorageService? _storage;
 
-    public OrderService(AppDbContext db, ILogger<OrderService> log, INotificationService? notificationService = null, Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
+    public OrderService(AppDbContext db, ILogger<OrderService> log, IFileStorageService? storage = null, INotificationService? notificationService = null, Microsoft.Extensions.Configuration.IConfiguration? configuration = null)
     {
         _db = db;
         _log = log;
+        _storage = storage;
         _notificationService = notificationService;
         _configuration = configuration;
     }
@@ -417,11 +425,13 @@ public class OrderService : IOrderService
             }
 
             var isCompleted = paymentMethod is PaymentMethod.Cash or PaymentMethod.Debt;
+            var openShift = await _db.Shifts.FirstOrDefaultAsync(s => s.UserId == userId && s.Status == ShiftStatus.Open);
             var order = new Order
             {
                 Code = code,
                 CashierId = userId,
                 CustomerId = req.CustomerId,
+                ShiftId = openShift?.Id,
                 Subtotal = subtotal,
                 Discount = discount,
                 SurchargeTotal = surchargeTotal,
@@ -520,12 +530,18 @@ public class OrderService : IOrderService
                 order.PaidAmount, order.Change, amountOwed,
                 order.Status.ToString().ToLowerInvariant(),
                 loyaltyEarned, order.CompletedAt ?? now,
-                lines.Select((l, idx) => new OrderLineResponse(
-                    l.Product.Id, l.Product.Name, l.UnitId,
-                    l.UnitId is null
-                        ? unitNames.TryGetValue((l.Product.Id, BaseUnitId(units, l.Product.Id)), out var bn) ? bn : "cái"
-                        : unitNames[(l.Product.Id, l.UnitId.Value)],
-                    l.Qty, l.UnitPrice, l.LineTotal, l.Product.IsWeighed)).ToList(),
+                order.Items.Select(oi => new OrderLineResponse(
+                    oi.Id,
+                    oi.ProductId,
+                    products.First(p => p.Id == oi.ProductId).Name,
+                    oi.UnitId,
+                    oi.UnitId is null
+                        ? unitNames.TryGetValue((oi.ProductId, BaseUnitId(units, oi.ProductId)), out var bn) ? bn : "cái"
+                        : unitNames[(oi.ProductId, oi.UnitId.Value)],
+                    oi.Qty,
+                    oi.UnitPrice,
+                    oi.Total,
+                    products.First(p => p.Id == oi.ProductId).IsWeighed)).ToList(),
                 stockWarnings,
                 0m, 0, 0m, 0m, null, order.DeliveryMethod, order.ShippingFee);
 
@@ -665,6 +681,255 @@ public class OrderService : IOrderService
         "banktransfer" or "bank_transfer" => PaymentMethod.BankTransfer,
         _ => throw new BusinessRuleException($"paymentMethod '{s}' không hợp lệ (cash|debt|vietqr|banktransfer)")
     };
+
+    public async Task<PagedOrderResponse> GetOrdersAsync(
+        DateTime? fromDate,
+        DateTime? toDate,
+        int? customerId,
+        int? cashierId,
+        int? shiftId,
+        OrderStatus? status,
+        PaymentMethod? paymentMethod,
+        int page,
+        int pageSize)
+    {
+        if (pageSize is < 1 or > 100) pageSize = 20;
+        if (page < 1) page = 1;
+
+        var query = _db.Orders
+            .AsNoTracking()
+            .Include(o => o.Cashier)
+            .Include(o => o.Customer)
+            .Include(o => o.Items)
+            .AsQueryable();
+
+        if (fromDate.HasValue)
+            query = query.Where(o => o.CreatedAt >= fromDate.Value);
+        if (toDate.HasValue)
+            query = query.Where(o => o.CreatedAt <= toDate.Value);
+        if (customerId.HasValue)
+            query = query.Where(o => o.CustomerId == customerId.Value);
+        if (cashierId.HasValue)
+            query = query.Where(o => o.CashierId == cashierId.Value);
+        if (shiftId.HasValue)
+            query = query.Where(o => o.ShiftId == shiftId.Value);
+        if (status.HasValue)
+            query = query.Where(o => o.Status == status.Value);
+        if (paymentMethod.HasValue)
+            query = query.Where(o => o.PaymentMethod == paymentMethod.Value);
+
+        var total = await query.CountAsync();
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+        if (totalPages < 1) totalPages = 1;
+
+        var orders = await query
+            .OrderByDescending(o => o.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var items = orders.Select(o => new OrderSummaryResponse(
+            o.Id,
+            o.Code,
+            o.CashierId,
+            o.Cashier?.FullName ?? o.Cashier?.Username ?? "Unknown",
+            o.CustomerId,
+            o.Customer?.Name,
+            o.ShiftId,
+            o.Subtotal,
+            o.Discount,
+            o.SurchargeTotal,
+            o.Vat,
+            o.ShippingFee,
+            o.Total,
+            o.PaymentMethod.ToString().ToLowerInvariant(),
+            o.PaidAmount,
+            o.Change,
+            o.Status.ToString().ToLowerInvariant(),
+            o.Items.Count,
+            o.CreatedAt,
+            o.CompletedAt
+        )).ToList();
+
+        return new PagedOrderResponse(page, pageSize, total, totalPages, items);
+    }
+
+    public async Task<OrderDetailResponse> GetOrderByIdAsync(int id)
+    {
+        var order = await _db.Orders
+            .AsNoTracking()
+            .Include(o => o.Cashier)
+            .Include(o => o.Customer)
+            .Include(o => o.Items).ThenInclude(i => i.Product)
+            .Include(o => o.Payments)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order is null)
+            throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{id}");
+
+        var unitIds = order.Items.Where(i => i.UnitId.HasValue).Select(i => i.UnitId!.Value).Distinct().ToList();
+        var units = await _db.Units.AsNoTracking().Where(u => unitIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name);
+
+        var items = order.Items.Select(i => new OrderItemDetailResponse(
+            i.Id,
+            i.ProductId,
+            i.Product?.Name ?? "",
+            i.Product?.Barcode ?? "",
+            i.UnitId,
+            i.UnitId.HasValue && units.TryGetValue(i.UnitId.Value, out var uName) ? uName : "cái",
+            i.Qty,
+            i.UnitPrice,
+            i.LineDiscount,
+            i.Total,
+            i.Product?.IsWeighed ?? false
+        )).ToList();
+
+        var payments = order.Payments.Select(p => new OrderPaymentBriefResponse(
+            p.Id,
+            p.Method.ToString(),
+            p.Amount,
+            p.Status.ToString(),
+            p.Reference,
+            p.PaidAt
+        )).ToList();
+
+        return new OrderDetailResponse(
+            order.Id,
+            order.Code,
+            order.CashierId,
+            order.Cashier?.FullName ?? order.Cashier?.Username ?? "Unknown",
+            order.CustomerId,
+            order.Customer?.Name,
+            order.Customer?.Phone,
+            order.ShiftId,
+            order.Subtotal,
+            order.Discount,
+            order.SurchargeTotal,
+            order.Vat,
+            order.ShippingFee,
+            order.Total,
+            order.PaymentMethod.ToString().ToLowerInvariant(),
+            order.PaidAmount,
+            order.Change,
+            order.DeliveryMethod,
+            order.Status.ToString().ToLowerInvariant(),
+            order.LoyaltyEarned,
+            order.LoyaltyRevoked,
+            order.CreatedAt,
+            order.CompletedAt,
+            items,
+            payments
+        );
+    }
+
+    public async Task UpdateOrderAsync(int id, OrderUpdateRequest req, int userId)
+    {
+        var order = await _db.Orders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null) throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{id}");
+        if (order.Status == OrderStatus.Completed)
+            throw new BusinessRuleException("Không thể chỉnh sửa đơn hàng đã hoàn tất.");
+
+        // Cập nhật thông tin cơ bản
+        if (req.CustomerId.HasValue) order.CustomerId = req.CustomerId;
+        if (!string.IsNullOrWhiteSpace(req.Note)) order.Note = req.Note; // Giả định Entity Order có trường Note
+
+        // Cập nhật Items & Tính lại tiền
+        if (req.Items != null && req.Items.Count > 0)
+        {
+            _db.OrderItems.RemoveRange(order.Items);
+
+            var productIds = req.Items.Select(i => i.ProductId).Distinct().ToList();
+            var products = await _db.Products.Where(p => productIds.Contains(p.Id)).ToListAsync();
+            var storeSetting = await _db.StoreSettings.AsNoTracking().FirstAsync();
+
+            decimal newSubtotal = 0;
+            foreach (var itemReq in req.Items)
+            {
+                var p = products.First(x => x.Id == itemReq.ProductId);
+                var unitPrice = itemReq.UnitPrice ?? p.RetailPrice;
+                var lineTotal = itemReq.Qty * unitPrice;
+
+                order.Items.Add(new OrderItem
+                {
+                    Order = order,
+                    ProductId = p.Id,
+                    Qty = itemReq.Qty,
+                    UnitPrice = unitPrice,
+                    Total = lineTotal
+                });
+                newSubtotal += lineTotal;
+            }
+            order.Subtotal = RoundMoney(newSubtotal);
+        }
+
+        order.Discount = RoundMoney(req.Discount ?? order.Discount);
+
+        // Tính lại Total (Đơn giản hóa: Total = Subtotal - Discount)
+        order.Total = RoundMoney(order.Subtotal - order.Discount);
+
+        PosLogService.Write(_db, "ORDER_UPDATED", userId, "order", order.Code, new { order.Total });
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task CancelOrderAsync(int id, int userId, string reason)
+    {
+        var order = await _db.Orders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == id);
+
+        if (order == null) throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{id}");
+        if (order.Status == OrderStatus.Completed)
+            throw new BusinessRuleException("Không thể hủy đơn hàng đã hoàn tất.");
+
+        // Hoàn trả kho
+        foreach (var item in order.Items)
+        {
+            var p = await _db.Products.FindAsync(item.ProductId);
+            if (p != null) p.CurrentStock += item.Qty;
+        }
+
+        order.Status = OrderStatus.Cancelled;
+        PosLogService.Write(_db, "ORDER_CANCELLED", userId, "order", order.Code, new { reason });
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<OrderImageResponse> AddOrderImageAsync(int orderId, int userId, OrderImageUploadRequest req)
+    {
+        if (_storage == null) throw new InvalidOperationException("FileStorageService is not configured");
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order == null) throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{orderId}");
+
+        var imageUrl = await _storage.SaveFileAsync(req.File, "orders");
+
+        var orderImage = new OrderImage
+        {
+            OrderId = orderId,
+            ImageUrl = imageUrl,
+            ImageType = string.IsNullOrWhiteSpace(req.ImageType) ? "Proof" : req.ImageType.Trim()
+        };
+
+        _db.OrderImages.Add(orderImage);
+        PosLogService.Write(_db, "ORDER_IMAGE_UPLOADED", userId, "order", order.Code, new { orderImage.ImageType });
+        await _db.SaveChangesAsync();
+
+        return new OrderImageResponse(orderImage.Id, orderImage.ImageUrl, orderImage.ImageType, orderImage.CreatedAt);
+    }
+
+    public async Task DeleteOrderImageAsync(int imageId, int userId)
+    {
+        if (_storage == null) throw new InvalidOperationException("FileStorageService is not configured");
+        var img = await _db.OrderImages.FirstOrDefaultAsync(x => x.Id == imageId);
+        if (img == null) throw new KeyNotFoundException($"Không tìm thấy ảnh #{imageId}");
+
+        await _storage.DeleteFileAsync(img.ImageUrl);
+
+        _db.OrderImages.Remove(img);
+        PosLogService.Write(_db, "ORDER_IMAGE_DELETED", userId, "image", imageId.ToString());
+        await _db.SaveChangesAsync();
+    }
 
     private sealed record ComputedLine(Product Product, int? UnitId, decimal Qty, decimal UnitPrice, decimal LineTotal);
 }

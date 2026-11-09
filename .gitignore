@@ -42,9 +42,13 @@ pnpm-debug.log*
 Thumbs.db
 
 # =========================
-# Logs
+# Logs & Audit reports
 # =========================
 *.log
+docs/audit/
+token.txt
+login_*.json
+order_test.json
 
 # =========================
 # Local database files
@@ -78,3 +82,11 @@ Thumbs.db
 *.temp
 pos-api/tests/PosApi.Tests/TestResults/
 pos-api/Diagnostics_Backup/
+
+# =========================
+# Database Sample Data (Allowed exceptions)
+# =========================
+data/*
+!data/digism_pos_sample.dump
+!data/CHECKSUMS.txt
+!data/README.md

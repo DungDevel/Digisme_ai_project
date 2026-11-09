@@ -1,0 +1,18 @@
+﻿{
+    "volume": "Small_Test",
+    "seed_value": 20261109,
+    "start_date": "2025-05-09",
+    "end_date": "2026-11-09",
+    "entities": {
+        "stores": 1,
+        "users": 10,
+        "categories": 5,
+        "products": 100,
+        "suppliers": 5,
+        "customers": 100,
+        "orders": 300,
+        "inventory_docs": 50,
+        "financial_docs": 100,
+        "shifts": 10
+    }
+}

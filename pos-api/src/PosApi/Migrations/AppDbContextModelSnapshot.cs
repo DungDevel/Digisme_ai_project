@@ -488,6 +488,9 @@ namespace PosApi.Migrations
                     b.Property<int>("LoyaltyRevoked")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
                     b.Property<decimal>("PaidAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -534,6 +537,35 @@ namespace PosApi.Migrations
                     b.HasIndex("ShiftId");
 
                     b.ToTable("Orders");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.OrderImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ImageType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.ToTable("OrderImages");
                 });
 
             modelBuilder.Entity("PosApi.Domain.OrderItem", b =>
@@ -770,6 +802,9 @@ namespace PosApi.Migrations
                     b.Property<decimal>("CurrentStock")
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
@@ -1018,6 +1053,9 @@ namespace PosApi.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
                     b.Property<decimal>("OpeningCash")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1253,6 +1291,10 @@ namespace PosApi.Migrations
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
+
+                    b.Property<string>("StoreType")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1868,6 +1910,17 @@ namespace PosApi.Migrations
                     b.Navigation("Shift");
                 });
 
+            modelBuilder.Entity("PosApi.Domain.OrderImage", b =>
+                {
+                    b.HasOne("PosApi.Domain.Order", "Order")
+                        .WithMany("Images")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
             modelBuilder.Entity("PosApi.Domain.OrderItem", b =>
                 {
                     b.HasOne("PosApi.Domain.Order", "Order")
@@ -2293,6 +2346,8 @@ namespace PosApi.Migrations
 
             modelBuilder.Entity("PosApi.Domain.Order", b =>
                 {
+                    b.Navigation("Images");
+
                     b.Navigation("Items");
 
                     b.Navigation("Payments");

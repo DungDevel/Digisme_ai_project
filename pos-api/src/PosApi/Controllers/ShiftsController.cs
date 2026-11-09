@@ -8,10 +8,11 @@ namespace PosApi.Controllers;
 
 /// <summary>
 /// SPRINT 3. SHIFTS (QUẢN LÝ CA LÀM VIỆC)
-/// - POST /api/v1/shifts/open   — Mở ca làm việc (AnyRole)
-/// - GET  /api/v1/shifts/current — Xem ca đang mở của user (AnyRole)
-/// - POST /api/v1/shifts/close  — Đóng ca + kiểm đếm tiền mặt (AnyRole)
-/// - GET  /api/v1/shifts        — Lịch sử ca làm việc (ManagerOnly)
+/// - POST /api/v1/shifts/open          — Mở ca làm việc (AnyRole)
+/// - GET  /api/v1/shifts/current       — Xem ca đang mở của user (AnyRole)
+/// - GET  /api/v1/shifts/current/summary — Xem báo cáo tổng hợp dòng tiền ca hiện tại (AnyRole)
+/// - POST /api/v1/shifts/close         — Đóng ca + kiểm đếm tiền mặt + lý do chênh lệch (AnyRole)
+/// - GET  /api/v1/shifts               — Lịch sử ca làm việc (ManagerOnly)
 /// </summary>
 [ApiController]
 [Route("api/v1/shifts")]
@@ -54,6 +55,22 @@ public class ShiftsController : ControllerBase
         return Ok(shift);
     }
 
+    [HttpGet("current/summary")]
+    [ProducesResponseType(typeof(ShiftSummaryResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CurrentSummary()
+    {
+        try
+        {
+            var summary = await _shiftService.GetShiftSummaryAsync(UserId);
+            return Ok(summary);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("close")]
     [ProducesResponseType(typeof(ShiftResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -62,7 +79,7 @@ public class ShiftsController : ControllerBase
     {
         try
         {
-            var result = await _shiftService.CloseShiftAsync(UserId, req.CountedCash);
+            var result = await _shiftService.CloseShiftAsync(UserId, req.CountedCash, req.Note);
             return Ok(result);
         }
         catch (KeyNotFoundException ex)

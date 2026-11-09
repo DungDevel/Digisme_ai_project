@@ -489,7 +489,7 @@ public class OrderServiceTests
             .Build();
 
         var req = new CreateOrderRequest(cust.Id, "Cash", 500000m, 0m, new(), new() { new(product.Id, null, 1, 100000m) });
-        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object, null, config);
+        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object, null, null, config);
         var res = await service.CreateOrderAsync(userId, req, null);
         var order = await context.Orders.FindAsync(res.Id);
         Assert.Equal(10000m, order!.Discount);
@@ -569,6 +569,57 @@ public class OrderServiceTests
         var pt = await context.PointTransactions.FirstOrDefaultAsync(t => t.Type == PointTransactionType.Earn);
         Assert.NotNull(pt);
         Assert.Equal(100, pt.Points);
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task GetOrdersAsync_ReturnsPagedOrders()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var (userId, product) = await SeedUserAndProduct(context, 100m, 10000m);
+
+        var req = new CreateOrderRequest(null, "Cash", 50000m, 0m, new(), new() { new(product.Id, null, 2, 10000m) });
+        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var created = await service.CreateOrderAsync(userId, req, null);
+
+        var paged = await service.GetOrdersAsync(null, null, null, userId, null, null, null, 1, 20);
+
+        Assert.NotNull(paged);
+        Assert.True(paged.Total >= 1);
+        Assert.Contains(paged.Items, o => o.Id == created.Id);
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task GetOrderByIdAsync_ReturnsOrderWithItems()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var (userId, product) = await SeedUserAndProduct(context, 100m, 10000m);
+
+        var req = new CreateOrderRequest(null, "Cash", 50000m, 0m, new(), new() { new(product.Id, null, 3, 10000m) });
+        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var created = await service.CreateOrderAsync(userId, req, null);
+
+        var detail = await service.GetOrderByIdAsync(created.Id);
+
+        Assert.NotNull(detail);
+        Assert.Equal(created.Id, detail.Id);
+        Assert.Equal(created.Code, detail.Code);
+        Assert.Single(detail.Items);
+        Assert.Equal(product.Id, detail.Items[0].ProductId);
+        Assert.True(detail.Items[0].OrderItemId > 0);
+        Assert.Equal(3, detail.Items[0].Qty);
+        Assert.Equal(30000m, detail.Items[0].Total);
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task GetOrderByIdAsync_NonExistent_ThrowsKeyNotFoundException()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.GetOrderByIdAsync(999999));
         await tx.RollbackAsync();
     }
 }

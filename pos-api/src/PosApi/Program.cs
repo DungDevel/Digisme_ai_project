@@ -50,6 +50,9 @@ builder.Services.AddScoped<ICashVoucherService, CashVoucherService>();
 builder.Services.AddScoped<ICashFundBookService, CashFundBookService>();
 builder.Services.AddScoped<IGeneralJournalService, GeneralJournalService>();
 builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
+builder.Services.AddScoped<IFileStorageService, FileStorageService>();
+builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddSignalR();
 
 // ── HTTP Client cho Health Check ──
@@ -131,6 +134,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<GlobalExceptionHandler>();
 
+app.UseStaticFiles(); // Cho phép phục vụ file tĩnh trong wwwroot (uploads)
 app.UseCors(o => o.SetIsOriginAllowed(_ => true).AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("x-ratelimit-remaining"));
 app.UseAuthentication();
 app.UseAuthorization();

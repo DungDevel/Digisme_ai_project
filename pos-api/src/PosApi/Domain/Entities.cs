@@ -108,6 +108,7 @@ public class Product
     /// true nếu bán lẻ theo cân (tối đa 3 chữ số thập phân)
     public bool IsWeighed { get; set; }
     public bool IsActive { get; set; } = true;
+    public string? ImageUrl { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
     public List<ProductUnit> Units { get; set; } = new();
@@ -206,6 +207,7 @@ public class Shift
     public decimal? ExpectedCash { get; set; }
     public decimal? CountedCash { get; set; }
     public decimal? Diff { get; set; }
+    public string? Note { get; set; }
     public List<Order> Orders { get; set; } = new();
 }
 
@@ -233,6 +235,7 @@ public class Order
     public decimal Change { get; set; }
     public string DeliveryMethod { get; set; } = "instore";
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
+    public string? Note { get; set; }
     public int LoyaltyEarned { get; set; }
     public int LoyaltyRevoked { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -240,6 +243,17 @@ public class Order
 
     public List<OrderItem> Items { get; set; } = new();
     public List<Payment> Payments { get; set; } = new();
+    public List<OrderImage> Images { get; set; } = new();
+}
+
+public class OrderImage
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+    public Order Order { get; set; } = null!;
+    public string ImageUrl { get; set; } = string.Empty;
+    public string ImageType { get; set; } = "Proof"; // Proof, Delivery, etc.
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
 public class OrderItem
@@ -436,6 +450,7 @@ public class StoreSetting
     public int Id { get; set; } = 1;
     public string StoreName { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
+    public string StoreType { get; set; } = "Retail"; // "Retail" or "FandB"
     /// Tài khoản VietQR: ngân hàng + số tài khoản + tên người nhận
     public string VietQrBankCode { get; set; } = string.Empty;
     public string VietQrAccountNo { get; set; } = string.Empty;

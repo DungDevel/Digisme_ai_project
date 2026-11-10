@@ -184,8 +184,8 @@ public record StockInCreatedResponse(int Id, string Code, decimal Total, DateTim
 
 // ── Shifts (Sprint 3) ──
 public record OpenShiftRequest(decimal OpeningCash);
-public record CloseShiftRequest(decimal CountedCash, string? Note);
-public record ShiftResponse(int Id, int UserId, string Username, DateTime StartedAt, DateTime? EndedAt, string Status, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Diff, string? Note);
+public record CloseShiftRequest(decimal CountedCash, decimal? CountedTransfer = null, Dictionary<int, int>? Denominations = null, string? Note = null);
+public record ShiftResponse(int Id, int UserId, string Username, DateTime StartedAt, DateTime? EndedAt, string Status, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Diff, decimal TransferSales, decimal? CountedTransfer, decimal? TransferDiff, string? DenominationsJson, string? Note);
 public record PagedShiftResponse(int Page, int PageSize, int Total, int TotalPages, List<ShiftResponse> Items);
 public record ShiftOrderBrief(int Id, string Code, decimal Total, string PaymentMethod, DateTime CreatedAt);
 public record ShiftSummaryResponse(
@@ -195,9 +195,11 @@ public record ShiftSummaryResponse(
     DateTime StartedAt,
     decimal OpeningCash,
     decimal CashSales,
+    decimal TransferSales,
     decimal CashReceipts,
     decimal CashPayments,
     decimal ExpectedCash,
+    decimal ExpectedTransfer,
     int TotalOrders,
     List<ShiftOrderBrief> Orders
 );

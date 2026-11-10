@@ -264,4 +264,54 @@ public class ReportServiceTests : IAsyncLifetime
         Assert.Equal(300000m, report.ClosingBalance);
         Assert.Single(report.Vouchers);
     }
+
+    [Fact]
+    public async Task GetSalesReportAsync_SubstractsReturnsCorrectly()
+    {
+        var cat = new Category { Name = "C1" };
+        _context!.Categories.Add(cat);
+        await _context.SaveChangesAsync();
+
+        var product = new Product
+        {
+            Name = "P1",
+            Barcode = "P001",
+            CategoryId = cat.Id,
+            RetailPrice = 100000m,
+            CurrentStock = 10m
+        };
+        _context.Products.Add(product);
+        await _context.SaveChangesAsync();
+
+        var order = new Order
+        {
+            Code = "INV-001",
+            CashierId = 1,
+            Subtotal = 100000m,
+            Total = 100000m,
+            Status = OrderStatus.Completed,
+            CreatedAt = DateTime.UtcNow,
+            Items = new List<OrderItem>
+            {
+                new OrderItem { ProductId = product.Id, Qty = 1, UnitPrice = 100000m, Total = 100000m, ReturnedQty = 1 }
+            }
+        };
+        _context.Orders.Add(order);
+
+        var returnRecord = new ReturnRecord
+        {
+            Code = "PHTRA-001",
+            OrderId = order.Id,
+            TotalReturned = 100000m,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Returns.Add(returnRecord);
+        await _context.SaveChangesAsync();
+
+        var service = new ReportService(_context);
+        var report = await service.GetSalesReportAsync(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1));
+
+        Assert.Equal(0m, report.TotalRevenue);
+        Assert.Equal(0m, report.Subtotal);
+    }
 }

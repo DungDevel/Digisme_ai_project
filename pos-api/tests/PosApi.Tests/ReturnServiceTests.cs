@@ -1067,4 +1067,46 @@ public class ReturnServiceTests
         await tx.RollbackAsync();
     }
 
+    [Fact]
+    public async Task CreateReturnAsync_UpdatesWarehouseStockAndLedgerWithWarehouseId()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var wh = new Warehouse { Code = "WH-TEST", Name = "Kho Test", IsDefault = true, IsActive = true };
+        context.Warehouses.Add(wh);
+        await context.SaveChangesAsync();
+
+        var (cashierId, product) = await SeedUserAndProduct(context, 50m);
+        context.WarehouseStocks.Add(new WarehouseStock { WarehouseId = wh.Id, ProductId = product.Id, Stock = 50m });
+        await context.SaveChangesAsync();
+
+        var order = new Order
+        {
+            Code = "INV-" + Guid.NewGuid().ToString().Substring(0, 6),
+            CashierId = cashierId,
+            Subtotal = 10000m,
+            Total = 10000m,
+            Status = OrderStatus.Completed,
+            Items = new List<OrderItem>
+            {
+                new OrderItem { ProductId = product.Id, Qty = 1, UnitPrice = 10000m, Total = 10000m, ReturnedQty = 0 }
+            }
+        };
+        context.Orders.Add(order);
+        await context.SaveChangesAsync();
+
+        var service = new ReturnService(context, new Mock<ILogger<ReturnService>>().Object);
+        var item = order.Items.First();
+        var res = await service.CreateReturnAsync(cashierId, new ReturnRequest(order.Id, "Return to WH", new List<ReturnItemRequest> { new(item.Id, 1) }));
+
+        var whStock = await context.WarehouseStocks.FirstOrDefaultAsync(s => s.WarehouseId == wh.Id && s.ProductId == product.Id);
+        Assert.NotNull(whStock);
+        Assert.Equal(51m, whStock.Stock);
+
+        var ledger = await context.StockLedger.OrderByDescending(l => l.Id).FirstOrDefaultAsync(l => l.RefType == LedgerRefType.Return);
+        Assert.NotNull(ledger);
+        Assert.Equal(wh.Id, ledger.WarehouseId);
+
+        await tx.RollbackAsync();
+    }
+
 }

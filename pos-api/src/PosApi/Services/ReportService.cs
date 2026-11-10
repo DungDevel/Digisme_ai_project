@@ -42,6 +42,14 @@ public class ReportService : IReportService
         var totalRevenue = await query.SumAsync(o => (decimal?)o.Total) ?? 0m;
         var totalPaid = await query.SumAsync(o => (decimal?)o.PaidAmount) ?? 0m;
 
+        var totalReturned = await _context.Returns
+            .AsNoTracking()
+            .Where(r => r.CreatedAt >= startDate && r.CreatedAt <= endDate)
+            .SumAsync(r => (decimal?)r.TotalReturned) ?? 0m;
+
+        totalRevenue = Math.Max(0m, totalRevenue - totalReturned);
+        subtotal = Math.Max(0m, subtotal - totalReturned);
+
         return new SalesReportResponse(startDate, endDate, totalOrders, subtotal, discount, surchargeTotal, vat, totalRevenue, totalPaid);
     }
 
@@ -55,19 +63,24 @@ public class ReportService : IReportService
             join o in _context.Orders on oi.OrderId equals o.Id
             join p in _context.Products on oi.ProductId equals p.Id
             where o.Status == OrderStatus.Completed && o.CreatedAt >= startDate && o.CreatedAt <= endDate && !oi.Cancelled
-            select new { oi.ProductId, p.Name, p.Barcode, oi.Qty, oi.Total }
+            select new { oi.ProductId, p.Name, p.Barcode, oi.Qty, oi.ReturnedQty, oi.Total }
         )
         .ToListAsync();
 
         var items = raw
             .GroupBy(r => new { r.ProductId, r.Name, r.Barcode })
-            .Select(g => new TopProductReportItem(
-                g.Key.ProductId,
-                g.Key.Name,
-                g.Key.Barcode,
-                g.Sum(x => x.Qty),
-                g.Sum(x => x.Total)
-            ))
+            .Select(g => {
+                var netQty = g.Sum(x => x.Qty - x.ReturnedQty);
+                var netRevenue = g.Sum(x => x.Qty > 0 ? x.Total * ((x.Qty - x.ReturnedQty) / x.Qty) : 0m);
+                return new TopProductReportItem(
+                    g.Key.ProductId,
+                    g.Key.Name,
+                    g.Key.Barcode,
+                    netQty,
+                    netRevenue
+                );
+            })
+            .Where(x => x.TotalQtySold > 0)
             .OrderByDescending(x => x.TotalRevenue)
             .Take(top)
             .ToList();
@@ -105,6 +118,13 @@ public class ReportService : IReportService
 
         var totalSalesRevenue = await ordersQuery.SumAsync(o => (decimal?)o.Total) ?? 0m;
         var totalOutputVat = await ordersQuery.SumAsync(o => (decimal?)o.Vat) ?? 0m;
+
+        var totalReturned = await _context.Returns
+            .AsNoTracking()
+            .Where(r => r.CreatedAt >= startDate && r.CreatedAt <= endDate)
+            .SumAsync(r => (decimal?)r.TotalReturned) ?? 0m;
+
+        totalSalesRevenue = Math.Max(0m, totalSalesRevenue - totalReturned);
 
         var stockInsQuery = _context.StockIns
             .AsNoTracking()

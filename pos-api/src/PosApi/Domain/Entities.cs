@@ -207,6 +207,10 @@ public class Shift
     public decimal? ExpectedCash { get; set; }
     public decimal? CountedCash { get; set; }
     public decimal? Diff { get; set; }
+    public decimal TransferSales { get; set; }
+    public decimal? CountedTransfer { get; set; }
+    public decimal? TransferDiff { get; set; }
+    public string? DenominationsJson { get; set; }
     public string? Note { get; set; }
     public List<Order> Orders { get; set; } = new();
 }

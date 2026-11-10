@@ -102,7 +102,7 @@ public class ShiftServiceTests : IAsyncLifetime
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
 
-        var closed = await service.CloseShiftAsync(user.Id, 1150000m, "Thừa quỹ do khách boa");
+        var closed = await service.CloseShiftAsync(user.Id, 1150000m, null, null, "Thừa quỹ do khách boa");
 
         Assert.NotNull(closed);
         Assert.Equal("Closed", closed.Status);
@@ -142,5 +142,59 @@ public class ShiftServiceTests : IAsyncLifetime
         Assert.Equal(200000m, summary.CashSales);
         Assert.Equal(1200000m, summary.ExpectedCash);
         Assert.Single(summary.Orders);
+    }
+
+    [Fact]
+    public async Task CloseShift_WithDenominations_CalculatesCountedCashCorrectly()
+    {
+        var user = await SeedUserAsync();
+        var service = new ShiftService(_context!);
+
+        await service.OpenShiftAsync(user.Id, 500000m);
+
+        var denominations = new Dictionary<int, int>
+        {
+            { 500000, 2 },
+            { 100000, 3 }
+        };
+
+        var closed = await service.CloseShiftAsync(user.Id, 0m, null, denominations, "Đếm theo mệnh giá");
+
+        Assert.NotNull(closed);
+        Assert.Equal("Closed", closed.Status);
+        Assert.Equal(1300000m, closed.CountedCash);
+        Assert.NotNull(closed.DenominationsJson);
+    }
+
+    [Fact]
+    public async Task CloseShift_WithTransferReconciliation_CalculatesTransferDiffCorrectly()
+    {
+        var user = await SeedUserAsync();
+        var service = new ShiftService(_context!);
+
+        await service.OpenShiftAsync(user.Id, 500000m);
+        var shift = await _context.Shifts.FirstAsync(s => s.UserId == user.Id && s.Status == ShiftStatus.Open);
+
+        var order = new Order
+        {
+            Code = "INV-QR-001",
+            CashierId = user.Id,
+            ShiftId = shift.Id,
+            Subtotal = 300000m,
+            Total = 300000m,
+            PaymentMethod = PaymentMethod.VietQr,
+            PaidAmount = 300000m,
+            Change = 0m,
+            Status = OrderStatus.Completed
+        };
+        _context.Orders.Add(order);
+        await _context.SaveChangesAsync();
+
+        var closed = await service.CloseShiftAsync(user.Id, 500000m, 300000m, null, "Chốt ca có VietQR");
+
+        Assert.NotNull(closed);
+        Assert.Equal(300000m, closed.TransferSales);
+        Assert.Equal(300000m, closed.CountedTransfer);
+        Assert.Equal(0m, closed.TransferDiff);
     }
 }

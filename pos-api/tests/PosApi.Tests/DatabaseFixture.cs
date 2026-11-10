@@ -23,52 +23,55 @@ public class DatabaseFixture : IDisposable
         _connectionString = "Host=localhost;Port=5432;Database=digism_pos_test_adr;Username=pos_user;Password=pos_pass";
         lock (_migrationLock)
         {
-            if (!_migrated)
+            try
             {
-                try
+                var adminCs = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres";
+                using var adminConn = new NpgsqlConnection(adminCs);
+                adminConn.Open();
+                using var cmd = adminConn.CreateCommand();
+                cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = 'digism_pos_test_adr';";
+                var exists = cmd.ExecuteScalar();
+                if (exists == null)
                 {
-                    var adminCs = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres";
-                    using var adminConn = new NpgsqlConnection(adminCs);
-                    adminConn.Open();
-                    using var cmd = adminConn.CreateCommand();
-                    cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = 'digism_pos_test_adr';";
-                    var exists = cmd.ExecuteScalar();
-                    if (exists == null)
-                    {
-                        using var createCmd = adminConn.CreateCommand();
-                        createCmd.CommandText = "CREATE DATABASE digism_pos_test_adr OWNER pos_user;";
-                        createCmd.ExecuteNonQuery();
-                    }
+                    using var createCmd = adminConn.CreateCommand();
+                    createCmd.CommandText = "CREATE DATABASE digism_pos_test_adr OWNER pos_user;";
+                    createCmd.ExecuteNonQuery();
                 }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"DB creation error: {ex.Message}");
-                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"DB creation error: {ex.Message}");
+            }
 
-                try
-                {
-                    var options = new DbContextOptionsBuilder<AppDbContext>()
-                        .UseNpgsql(_connectionString).Options;
-                    using var context = new AppDbContext(options);
-                    context.Database.Migrate();
+            try
+            {
+                var options = new DbContextOptionsBuilder<AppDbContext>()
+                    .UseNpgsql(_connectionString).Options;
+                using var context = new AppDbContext(options);
+                context.Database.Migrate();
 
-                    if (!context.StoreSettings.Any())
-                    {
-                        context.StoreSettings.Add(new StoreSetting
-                        {
-                            StoreName = "Test Store",
-                            Address = "Test Address",
-                            VatRatePercent = 10m
-                        });
-                        context.SaveChanges();
-                    }
-                }
-                catch (Exception ex)
+                context.Database.ExecuteSqlRaw(
+                    "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"TransferSales\" numeric(18,4) NOT NULL DEFAULT 0;" +
+                    "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"CountedTransfer\" numeric(18,4) NULL;" +
+                    "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"TransferDiff\" numeric(18,4) NULL;" +
+                    "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"DenominationsJson\" text NULL;"
+                );
+
+                if (!context.StoreSettings.Any())
                 {
-                    Console.WriteLine($"MIGRATE ERROR: {ex.Message} --- {ex.InnerException?.Message}");
-                    throw;
+                    context.StoreSettings.Add(new StoreSetting
+                    {
+                        StoreName = "Test Store",
+                        Address = "Test Address",
+                        VatRatePercent = 10m
+                    });
+                    context.SaveChanges();
                 }
-                _migrated = true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"MIGRATE ERROR: {ex.Message} --- {ex.InnerException?.Message}");
+                throw;
             }
         }
     }

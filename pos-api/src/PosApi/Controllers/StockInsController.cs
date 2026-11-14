@@ -8,11 +8,6 @@ namespace PosApi.Controllers;
 
 /// <summary>
 /// M7. STOCK-IN / SUPPLIER INVOICES (OCR & Stock In Confirmation)
-/// - POST /api/v1/stock-ins        — Upload ảnh hóa đơn OCR (Manager Only)
-/// - GET  /api/v1/stock-ins/{id}   — Xem thông tin hóa đơn & kết quả OCR (Manager Only)
-/// - PUT  /api/v1/stock-ins/{id}/items — Sửa items hóa đơn pending (Manager Only)
-/// - POST /api/v1/stock-ins/{id}/confirm — Xác nhận nhập kho, cộng kho + ledger (Manager Only)
-/// - DELETE /api/v1/stock-ins/{id} — Từ chối hóa đơn pending (Manager Only)
 /// </summary>
 [ApiController]
 [Route("api/v1/stock-ins")]
@@ -24,6 +19,40 @@ public class StockInsController : ControllerBase
     public StockInsController(IStockInService stockInService)
     {
         _stockInService = stockInService;
+    }
+
+    [HttpGet]
+    [ProducesResponseType(typeof(PagedStockInResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetList(
+        [FromQuery] int? warehouseId,
+        [FromQuery] int? supplierId,
+        [FromQuery] StockInStatus? status,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        var result = await _stockInService.GetStockInsAsync(warehouseId, supplierId, status, page, pageSize);
+        return Ok(result);
+    }
+
+    [HttpGet("{id:int}")]
+    [ProducesResponseType(typeof(StockInResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetById(int id)
+    {
+        try
+        {
+            var stockIn = await _stockInService.GetStockInByIdAsync(id);
+            if (stockIn == null)
+            {
+                // Fallback: check if it's an invoice
+                var invoice = await _stockInService.GetInvoiceByIdAsync(id);
+                return Ok(invoice);
+            }
+            return Ok(stockIn);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
     }
 
     [HttpPost]
@@ -56,17 +85,49 @@ public class StockInsController : ControllerBase
         }
     }
 
-    [HttpGet("{id:int}")]
-    public async Task<IActionResult> GetInvoice(int id)
+    [HttpPost("manual")]
+    [ProducesResponseType(typeof(StockInResponse), StatusCodes.Status201Created)]
+    public async Task<IActionResult> CreateManual([FromBody] StockInCreateRequest req)
     {
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (userIdClaim == null) return Unauthorized();
+        var userId = int.Parse(userIdClaim.Value);
+
         try
         {
-            var invoice = await _stockInService.GetInvoiceByIdAsync(id);
-            return Ok(invoice);
+            var result = await _stockInService.CreateStockInDraftAsync(userId, req);
+            return StatusCode(201, result);
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(new { error = ex.Message });
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("{id:int}")]
+    [ProducesResponseType(typeof(StockInResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> UpdateDraft(int id, [FromBody] StockInUpdateRequest req)
+    {
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (userIdClaim == null) return Unauthorized();
+        var userId = int.Parse(userIdClaim.Value);
+
+        try
+        {
+            var result = await _stockInService.UpdateStockInDraftAsync(userId, id, req);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { error = ex.Message });
         }
     }
 
@@ -97,13 +158,22 @@ public class StockInsController : ControllerBase
 
         var idempotencyKey = Request.Headers["X-Idempotency-Key"].FirstOrDefault();
 
-        if (body == null || body.Items == null || body.Items.Count == 0)
-        {
-            return BadRequest(new { error = "Vui lòng cung cấp danh sách mặt hàng (items) cần xác nhận nhập kho" });
-        }
-
         try
         {
+            // Check if this id is a Draft StockIn or a SupplierInvoice
+            var stockIn = await _stockInService.GetStockInByIdAsync(id);
+            if (stockIn != null && stockIn.Status == StockInStatus.Draft)
+            {
+                var result = await _stockInService.ConfirmStockInDraftAsync(userId, id, idempotencyKey);
+                return Ok(result);
+            }
+
+            // Otherwise treat as Confirm OCR invoice
+            if (body == null || body.Items == null || body.Items.Count == 0)
+            {
+                return BadRequest(new { error = "Vui lòng cung cấp danh sách mặt hàng (items) cần xác nhận nhập kho" });
+            }
+
             var req = new ConfirmStockInRequest(
                 InvoiceId: id,
                 Items: body.Items,
@@ -112,8 +182,30 @@ public class StockInsController : ControllerBase
                 SupplierId: body.SupplierId
             );
 
-            var result = await _stockInService.ConfirmStockInAsync(userId, req, idempotencyKey);
-            return StatusCode(201, result);
+            var createdResp = await _stockInService.ConfirmStockInAsync(userId, req, idempotencyKey);
+            return StatusCode(201, createdResp);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:int}/cancel")]
+    public async Task<IActionResult> Cancel(int id)
+    {
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (userIdClaim == null) return Unauthorized();
+        var userId = int.Parse(userIdClaim.Value);
+
+        try
+        {
+            var result = await _stockInService.CancelStockInAsync(userId, id);
+            return Ok(result);
         }
         catch (KeyNotFoundException ex)
         {
@@ -126,16 +218,33 @@ public class StockInsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Reject(int id)
+    public async Task<IActionResult> DeleteOrReject(int id)
     {
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (userIdClaim == null) return Unauthorized();
+        var userId = int.Parse(userIdClaim.Value);
+
         try
         {
-            await _stockInService.RejectInvoiceAsync(id);
-            return Ok(new { message = "Đã từ chối hóa đơn thành công" });
+            // Try deleting draft stock-in first
+            await _stockInService.DeleteStockInAsync(userId, id);
+            return Ok(new { message = "Đã xóa phiếu nhập nháp thành công" });
         }
-        catch (KeyNotFoundException ex)
+        catch (KeyNotFoundException)
         {
-            return NotFound(new { error = ex.Message });
+            try
+            {
+                await _stockInService.RejectInvoiceAsync(id);
+                return Ok(new { message = "Đã từ chối hóa đơn thành công" });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (BusinessRuleException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
         }
         catch (BusinessRuleException ex)
         {

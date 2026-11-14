@@ -79,7 +79,7 @@ public class ShiftsController : ControllerBase
     {
         try
         {
-            var result = await _shiftService.CloseShiftAsync(UserId, req.CountedCash, req.Note);
+            var result = await _shiftService.CloseShiftAsync(UserId, req.CountedCash, req.CountedTransfer, req.Denominations, req.Note);
             return Ok(result);
         }
         catch (KeyNotFoundException ex)

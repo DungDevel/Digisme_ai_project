@@ -10,7 +10,7 @@ public interface IShiftService
     Task<ShiftResponse> OpenShiftAsync(int userId, decimal openingCash);
     Task<ShiftResponse?> GetCurrentShiftAsync(int userId);
     Task<ShiftSummaryResponse> GetShiftSummaryAsync(int userId);
-    Task<ShiftResponse> CloseShiftAsync(int userId, decimal countedCash, string? note = null);
+    Task<ShiftResponse> CloseShiftAsync(int userId, decimal countedCash, decimal? countedTransfer = null, Dictionary<int, int>? denominations = null, string? note = null);
     Task<PagedShiftResponse> ListShiftsAsync(int page, int pageSize);
 }
 
@@ -94,6 +94,10 @@ public class ShiftService : IShiftService
             .Where(o => o.Status == OrderStatus.Completed && o.PaymentMethod == PaymentMethod.Cash)
             .Sum(o => o.PaidAmount - o.Change);
 
+        decimal transferSales = shift.Orders
+            .Where(o => o.Status == OrderStatus.Completed && (o.PaymentMethod == PaymentMethod.VietQr || o.PaymentMethod == PaymentMethod.BankTransfer))
+            .Sum(o => o.Total);
+
         var cashVouchers = await _context.CashVouchers
             .Where(cv => cv.ShiftId == shift.Id && cv.Status == CashVoucherStatus.Confirmed)
             .ToListAsync();
@@ -102,6 +106,7 @@ public class ShiftService : IShiftService
         decimal cashPayments = cashVouchers.Where(cv => cv.Type == CashVoucherType.Payment && cv.PaymentMethod == PaymentMethod.Cash).Sum(cv => cv.Amount);
 
         decimal expectedCash = shift.OpeningCash + cashSales + cashReceipts - cashPayments;
+        decimal expectedTransfer = transferSales;
 
         return new ShiftSummaryResponse(
             shift.Id,
@@ -110,16 +115,24 @@ public class ShiftService : IShiftService
             shift.StartedAt,
             shift.OpeningCash,
             cashSales,
+            transferSales,
             cashReceipts,
             cashPayments,
             expectedCash,
+            expectedTransfer,
             shift.Orders.Count,
             shift.Orders.Select(o => new ShiftOrderBrief(o.Id, o.Code, o.Total, o.PaymentMethod.ToString(), o.CreatedAt)).ToList()
         );
     }
 
-    public async Task<ShiftResponse> CloseShiftAsync(int userId, decimal countedCash, string? note = null)
+    public async Task<ShiftResponse> CloseShiftAsync(int userId, decimal countedCash, decimal? countedTransfer = null, Dictionary<int, int>? denominations = null, string? note = null)
     {
+        if (denominations != null && denominations.Count > 0)
+        {
+            var calculatedCash = denominations.Sum(kv => kv.Key * kv.Value);
+            countedCash = calculatedCash;
+        }
+
         if (countedCash < 0)
             throw new BusinessRuleException("Tiền mặt kiểm đếm không được âm");
 
@@ -135,6 +148,10 @@ public class ShiftService : IShiftService
             .Where(o => o.Status == OrderStatus.Completed && o.PaymentMethod == PaymentMethod.Cash)
             .Sum(o => o.PaidAmount - o.Change);
 
+        decimal transferSales = shift.Orders
+            .Where(o => o.Status == OrderStatus.Completed && (o.PaymentMethod == PaymentMethod.VietQr || o.PaymentMethod == PaymentMethod.BankTransfer))
+            .Sum(o => o.Total);
+
         var cashVouchers = await _context.CashVouchers
             .Where(cv => cv.ShiftId == shift.Id && cv.Status == CashVoucherStatus.Confirmed)
             .ToListAsync();
@@ -145,11 +162,22 @@ public class ShiftService : IShiftService
         decimal expectedCash = shift.OpeningCash + cashSales + cashReceipts - cashPayments;
         decimal diff = countedCash - expectedCash;
 
+        decimal expectedTransfer = transferSales;
+        decimal? transferDiff = countedTransfer.HasValue ? countedTransfer.Value - expectedTransfer : (decimal?)null;
+
+        string? denominationsJson = denominations != null && denominations.Count > 0
+            ? System.Text.Json.JsonSerializer.Serialize(denominations)
+            : null;
+
         shift.EndedAt = DateTime.UtcNow;
         shift.Status = ShiftStatus.Closed;
         shift.ExpectedCash = expectedCash;
         shift.CountedCash = countedCash;
         shift.Diff = diff;
+        shift.TransferSales = transferSales;
+        shift.CountedTransfer = countedTransfer;
+        shift.TransferDiff = transferDiff;
+        shift.DenominationsJson = denominationsJson;
         shift.Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
 
         await _context.SaveChangesAsync();
@@ -189,5 +217,5 @@ public class ShiftService : IShiftService
     }
 
     private static ShiftResponse ToResponse(Shift s, string username) =>
-        new(s.Id, s.UserId, username, s.StartedAt, s.EndedAt, s.Status.ToString(), s.OpeningCash, s.ExpectedCash ?? 0m, s.CountedCash ?? 0m, s.Diff ?? 0m, s.Note);
+        new(s.Id, s.UserId, username, s.StartedAt, s.EndedAt, s.Status.ToString(), s.OpeningCash, s.ExpectedCash ?? 0m, s.CountedCash ?? 0m, s.Diff ?? 0m, s.TransferSales, s.CountedTransfer, s.TransferDiff, s.DenominationsJson, s.Note);
 }

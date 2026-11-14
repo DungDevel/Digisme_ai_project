@@ -269,17 +269,44 @@ public class ReturnService : IReturnService
                 }
             }
 
-            // 3. Restore Stock & Write Ledger
+            // 3. Restore Stock & Write Ledger (Multi-warehouse)
+            var defaultWarehouse = await _db.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
+                                   ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive);
+            int? warehouseId = defaultWarehouse?.Id;
+
             foreach (var ri in returnItems)
             {
                 var product = ri.OrderItem.Product;
-                
+
                 // Atomic stock increase
                 product.CurrentStock += ri.Qty;
+
+                if (warehouseId.HasValue)
+                {
+                    var whStock = await _db.WarehouseStocks
+                        .FirstOrDefaultAsync(s => s.WarehouseId == warehouseId.Value && s.ProductId == product.Id);
+                    if (whStock == null)
+                    {
+                        whStock = new WarehouseStock
+                        {
+                            WarehouseId = warehouseId.Value,
+                            ProductId = product.Id,
+                            Stock = ri.Qty,
+                            UpdatedAt = DateTime.UtcNow
+                        };
+                        _db.WarehouseStocks.Add(whStock);
+                    }
+                    else
+                    {
+                        whStock.Stock += ri.Qty;
+                        whStock.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
 
                 _db.StockLedger.Add(new StockLedgerEntry
                 {
                     ProductId = product.Id,
+                    WarehouseId = warehouseId,
                     Qty = ri.Qty,
                     Balance = product.CurrentStock,
                     RefType = LedgerRefType.Return,

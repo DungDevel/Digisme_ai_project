@@ -147,6 +147,19 @@ class DigiSMESeeder:
                 stock_data.append((p_id, w_id, random.randint(10, 1000), now))
         self.bulk_insert("WarehouseStocks", ["ProductId", "WarehouseId", "Stock", "UpdatedAt"], stock_data)
 
+        if not self.dry_run:
+            with self.conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE "Products" p
+                    SET "CurrentStock" = COALESCE(ws_sum.total, 0)
+                    FROM (
+                        SELECT "ProductId", SUM("Stock") AS total
+                        FROM "WarehouseStocks"
+                        GROUP BY "ProductId"
+                    ) ws_sum
+                    WHERE p."Id" = ws_sum.""ProductId"";
+                """)
+
     def seed_sales_and_logs(self):
         self.log("Seeding Sales and Logs...")
         shifts = []

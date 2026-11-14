@@ -109,6 +109,7 @@ public class B1EvidenceTests
 
         var product = new Product { Name = "Prod Adj", Barcode = "ADJ-" + Guid.NewGuid().ToString("N").Substring(0, 4), CategoryId = category.Id, CurrentStock = 13, IsActive = true };
         context.Products.Add(product);
+        await context.SaveChangesAsync(); // Save product first so product.Id is generated!
 
         context.WarehouseStocks.AddRange(
             new WarehouseStock { WarehouseId = whA.Id, ProductId = product.Id, Stock = 3 },

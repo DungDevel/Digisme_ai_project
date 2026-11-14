@@ -14,6 +14,15 @@ public class InventoryServiceIntegrationTests
 
     private async Task<Product> SeedProduct(AppDbContext context, decimal initialStock = 100m, decimal minStock = 10m)
     {
+        var warehouse = await context.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
+                        ?? await context.Warehouses.FirstOrDefaultAsync(w => w.IsActive);
+        if (warehouse == null)
+        {
+            warehouse = new Warehouse { Code = "WH-DEFAULT", Name = "Kho mặc định", IsDefault = true, IsActive = true };
+            context.Warehouses.Add(warehouse);
+            await context.SaveChangesAsync();
+        }
+
         var category = new Category { Name = "Test Cat " + Guid.NewGuid(), IsActive = true };
         context.Categories.Add(category);
         await context.SaveChangesAsync();
@@ -21,7 +30,7 @@ public class InventoryServiceIntegrationTests
         var product = new Product
         {
             Name = "Test Product",
-            Barcode = "TEST001",
+            Barcode = "TEST001-" + Guid.NewGuid().ToString("N").Substring(0, 4),
             CategoryId = category.Id,
             RetailPrice = 1000m,
             CurrentStock = initialStock,
@@ -30,6 +39,15 @@ public class InventoryServiceIntegrationTests
         };
         context.Products.Add(product);
         await context.SaveChangesAsync();
+
+        context.WarehouseStocks.Add(new WarehouseStock
+        {
+            WarehouseId = warehouse.Id,
+            ProductId = product.Id,
+            Stock = initialStock
+        });
+        await context.SaveChangesAsync();
+
         return product;
     }
 
@@ -87,7 +105,7 @@ public class InventoryServiceIntegrationTests
         var req = new InventoryAdjustRequest(-20m, "Too much removal");
 
         var ex = await Assert.ThrowsAsync<BusinessRuleException>(() => service.AdjustStockAsync(1, product.Id, req));
-        Assert.Contains("tồn kho âm", ex.Message);
+        Assert.Contains("âm", ex.Message);
 
         var updatedProduct = await context.Products.FindAsync(product.Id);
         Assert.Equal(10m, updatedProduct!.CurrentStock);

@@ -1042,6 +1042,12 @@ namespace PosApi.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<decimal?>("CountedTransfer")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("DenominationsJson")
+                        .HasColumnType("text");
+
                     b.Property<decimal?>("Diff")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -1065,6 +1071,12 @@ namespace PosApi.Migrations
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
+
+                    b.Property<decimal?>("TransferDiff")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal>("TransferSales")
+                        .HasColumnType("numeric");
 
                     b.Property<int>("UserId")
                         .HasColumnType("integer");
@@ -1092,8 +1104,17 @@ namespace PosApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("CreatedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsBackfilled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Note")
                         .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("SupplierId")
                         .HasColumnType("integer");
@@ -1109,6 +1130,9 @@ namespace PosApi.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<int>("WarehouseId")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
@@ -1118,6 +1142,8 @@ namespace PosApi.Migrations
 
                     b.HasIndex("SupplierInvoiceId")
                         .IsUnique();
+
+                    b.HasIndex("WarehouseId");
 
                     b.ToTable("StockIns");
                 });
@@ -1129,6 +1155,12 @@ namespace PosApi.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal?>("CostAfter")
+                        .HasColumnType("numeric");
+
+                    b.Property<decimal?>("CostBefore")
+                        .HasColumnType("numeric");
 
                     b.Property<int>("ProductId")
                         .HasColumnType("integer");
@@ -2107,9 +2139,17 @@ namespace PosApi.Migrations
                         .HasForeignKey("PosApi.Domain.StockIn", "SupplierInvoiceId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("PosApi.Domain.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Supplier");
 
                     b.Navigation("SupplierInvoice");
+
+                    b.Navigation("Warehouse");
                 });
 
             modelBuilder.Entity("PosApi.Domain.StockInItem", b =>

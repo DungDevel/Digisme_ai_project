@@ -20,6 +20,8 @@ public enum ShiftStatus { Open = 0, Closed = 1 }
 
 public enum SupplierInvoiceStatus { PendingReview = 0, Confirmed = 1, Rejected = 2 }
 
+public enum StockInStatus { Draft = 0, Confirmed = 1, Cancelled = 2 }
+
 public enum LedgerRefType { Sale = 0, Return = 1, Purchase = 2, Adjustment = 3, OcrStockIn = 4 }
 
 // ─────────────────────────── Auth ───────────────────────────
@@ -336,6 +338,17 @@ public class StockLedgerEntry
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+public class InventoryReconcileIssue
+{
+    public int Id { get; set; }
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public decimal CurrentStock { get; set; }
+    public decimal TotalWarehouseStock { get; set; }
+    public decimal Diff { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 // ─────────────────────────── Audit ───────────────────────────
 
 /// Append-only, bất biến (trigger chặn UPDATE/DELETE)
@@ -392,8 +405,13 @@ public class StockIn
     public int? SupplierId { get; set; }
     public Supplier? Supplier { get; set; }
     public string? SupplierName { get; set; }
+    public int WarehouseId { get; set; }
+    public Warehouse Warehouse { get; set; } = null!;
+    public StockInStatus Status { get; set; } = StockInStatus.Draft;
+    public bool IsBackfilled { get; set; } = false;
     public decimal Total { get; set; }
     public string? Note { get; set; }
+    public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<StockInItem> Items { get; set; } = new();
 }
@@ -408,6 +426,8 @@ public class StockInItem
     public decimal Qty { get; set; }
     public decimal UnitCost { get; set; }
     public decimal Total { get; set; }
+    public decimal? CostBefore { get; set; }
+    public decimal? CostAfter { get; set; }
 }
 
 // ─────────────────────────── CustomerGroup ───────────────────────────

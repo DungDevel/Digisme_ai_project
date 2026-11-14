@@ -16,6 +16,15 @@ public class SupplierDebtFeatureTests
 {
     private readonly DatabaseFixture _fixture = new();
 
+    private static async Task EnsureWarehouseAsync(AppDbContext context)
+    {
+        if (!await context.Warehouses.AnyAsync())
+        {
+            context.Warehouses.Add(new Warehouse { Code = "WH-DEFAULT", Name = "Kho mặc định", IsDefault = true, IsActive = true });
+            await context.SaveChangesAsync();
+        }
+    }
+
     [Fact]
     public async Task StockIn_WithPartialPayment_CreatesSupplierDebt()
     {
@@ -23,6 +32,7 @@ public class SupplierDebtFeatureTests
         await using var tx = await context.Database.BeginTransactionAsync();
         var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
 
+        await EnsureWarehouseAsync(context);
         var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 1", IsActive = true };
         context.Suppliers.Add(supplier);
         var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
@@ -67,6 +77,7 @@ public class SupplierDebtFeatureTests
         await using var tx = await context.Database.BeginTransactionAsync();
         var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
 
+        await EnsureWarehouseAsync(context);
         var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 2A", IsActive = true };
         context.Suppliers.Add(supplier);
         var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
@@ -110,6 +121,7 @@ public class SupplierDebtFeatureTests
         await using var tx = await context.Database.BeginTransactionAsync();
         var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
 
+        await EnsureWarehouseAsync(context);
         var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 2B", IsActive = true };
         context.Suppliers.Add(supplier);
         var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
@@ -151,6 +163,7 @@ public class SupplierDebtFeatureTests
         var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
         var debtService = new SupplierDebtService(context);
 
+        await EnsureWarehouseAsync(context);
         var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 2C", IsActive = true };
         context.Suppliers.Add(supplier);
         var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
@@ -258,6 +271,7 @@ public class SupplierDebtFeatureTests
         await using var tx = await context.Database.BeginTransactionAsync();
         var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
 
+        await EnsureWarehouseAsync(context);
         var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier Del", IsActive = true };
         context.Suppliers.Add(supplier);
         var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
@@ -425,6 +439,7 @@ public class SupplierDebtFeatureTests
         var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
         var debtService = new SupplierDebtService(context);
 
+        await EnsureWarehouseAsync(context);
         var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 10", IsActive = true };
         context.Suppliers.Add(supplier);
         var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
@@ -532,78 +547,90 @@ public class SupplierDebtFeatureTests
     [Fact]
     public async Task ConcurrencyTest_CancelStockIn_VsPayment_NoLostPayment()
     {
-        using var context1 = _fixture.CreateRealContext();
-        using var context2 = _fixture.CreateRealContext();
-        var stockInService = new StockInService(context1, new Mock<ILogger<StockInService>>().Object);
-        var debtService = new SupplierDebtService(context2);
+        int cancelWins = 0;
+        int payWins = 0;
 
-        var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier CC", IsActive = true };
-        context1.Suppliers.Add(supplier);
-        var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
-        context1.Categories.Add(category);
-        await context1.SaveChangesAsync();
-
-        var product = new Product { Name = "Prod CC", Barcode = "B-" + Guid.NewGuid().ToString("N").Substring(0, 6), CategoryId = category.Id, CurrentStock = 10, IsActive = true };
-        context1.Products.Add(product);
-        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
-        context1.SupplierInvoices.Add(invoice);
-        await context1.SaveChangesAsync();
-        await InventoryReconciler.ReconcileAsync(context1);
-
-        var req = new ConfirmStockInRequest(
-            invoice.Id,
-            new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
-            "Supplier CC",
-            "Note",
-            supplier.Id,
-            PaidAmount: 0m
-        );
-
-        var res = await stockInService.ConfirmStockInAsync(1, req, Guid.NewGuid().ToString());
-        var stockIn = await context1.StockIns.FirstAsync(s => s.Code == res.Code);
-        var debt = await context1.SupplierDebts.FirstAsync(d => d.StockInId == stockIn.Id);
-        var debtId = debt.Id;
-
-        var tcs = new TaskCompletionSource<bool>();
-
-        Task<bool> cancelTask = Task.Run(async () =>
+        for (int round = 0; round < 20; round++)
         {
-            await tcs.Task;
-            using var ctx = _fixture.CreateRealContext();
-            var svc = new StockInService(ctx, new Mock<ILogger<StockInService>>().Object);
-            try
-            {
-                await svc.CancelStockInAsync(1, stockIn.Id);
-                return true;
-            }
-            catch (BusinessRuleException)
-            {
-                return false;
-            }
-        });
+            using var context1 = _fixture.CreateRealContext();
+            using var context2 = _fixture.CreateRealContext();
+            var stockInService = new StockInService(context1, new Mock<ILogger<StockInService>>().Object);
+            var debtService = new SupplierDebtService(context2);
 
-        Task<bool> payTask = Task.Run(async () =>
-        {
-            await tcs.Task;
-            using var ctx = _fixture.CreateRealContext();
-            var svc = new SupplierDebtService(ctx);
-            try
-            {
-                await svc.PaySupplierDebtAsync(1, debtId, 5000m, "Pay concurrent");
-                return true;
-            }
-            catch (BusinessRuleException)
-            {
-                return false;
-            }
-        });
+            await EnsureWarehouseAsync(context1);
+            var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier CC", IsActive = true };
+            context1.Suppliers.Add(supplier);
+            var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
+            context1.Categories.Add(category);
+            await context1.SaveChangesAsync();
 
-        tcs.SetResult(true);
-        var results = await Task.WhenAll(cancelTask, payTask);
+            var product = new Product { Name = "Prod CC", Barcode = "B-" + Guid.NewGuid().ToString("N").Substring(0, 6), CategoryId = category.Id, CurrentStock = 10, IsActive = true };
+            context1.Products.Add(product);
+            var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+            context1.SupplierInvoices.Add(invoice);
+            await context1.SaveChangesAsync();
+            await InventoryReconciler.ReconcileAsync(context1);
 
-        bool cancelSuccess = results[0];
-        bool paySuccess = results[1];
-        Assert.True((cancelSuccess && !paySuccess) || (!cancelSuccess && paySuccess));
+            var req = new ConfirmStockInRequest(
+                invoice.Id,
+                new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
+                "Supplier CC",
+                "Note",
+                supplier.Id,
+                PaidAmount: 0m
+            );
+
+            var res = await stockInService.ConfirmStockInAsync(1, req, Guid.NewGuid().ToString());
+            var stockIn = await context1.StockIns.FirstAsync(s => s.Code == res.Code);
+            var debt = await context1.SupplierDebts.FirstAsync(d => d.StockInId == stockIn.Id);
+            var debtId = debt.Id;
+
+            var tcs = new TaskCompletionSource<bool>();
+
+            Task<bool> cancelTask = Task.Run(async () =>
+            {
+                await tcs.Task;
+                using var ctx = _fixture.CreateRealContext();
+                var svc = new StockInService(ctx, new Mock<ILogger<StockInService>>().Object);
+                try
+                {
+                    await svc.CancelStockInAsync(1, stockIn.Id);
+                    return true;
+                }
+                catch (BusinessRuleException)
+                {
+                    return false;
+                }
+            });
+
+            Task<bool> payTask = Task.Run(async () =>
+            {
+                await tcs.Task;
+                using var ctx = _fixture.CreateRealContext();
+                var svc = new SupplierDebtService(ctx);
+                try
+                {
+                    await svc.PaySupplierDebtAsync(1, debtId, 5000m, "Pay concurrent");
+                    return true;
+                }
+                catch (Exception ex) when (ex is BusinessRuleException || ex is KeyNotFoundException)
+                {
+                    return false;
+                }
+            });
+
+            tcs.SetResult(true);
+            var results = await Task.WhenAll(cancelTask, payTask);
+
+            bool cancelSuccess = results[0];
+            bool paySuccess = results[1];
+
+            Assert.True((cancelSuccess && !paySuccess) || (!cancelSuccess && paySuccess));
+            if (cancelSuccess) cancelWins++;
+            else payWins++;
+        }
+
+        System.Console.WriteLine($"[Concurrency Results] Cancel won: {cancelWins}, Pay won: {payWins}");
     }
 
     [Fact]

@@ -750,6 +750,14 @@ public class StockInService : IStockInService
             var conn = _db.Database.GetDbConnection();
             if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
 
+            using (var debtLockCmd = conn.CreateCommand() as NpgsqlCommand)
+            {
+                debtLockCmd!.CommandText = "SELECT \"Id\" FROM \"SupplierDebts\" WHERE \"StockInId\" = @stockInId ORDER BY \"Id\" FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTxDebt) debtLockCmd.Transaction = npgTxDebt;
+                debtLockCmd.Parameters.Add(new NpgsqlParameter("@stockInId", stockIn.Id));
+                await debtLockCmd.ExecuteNonQueryAsync();
+            }
+
             using (var prodLockCmd = conn.CreateCommand() as NpgsqlCommand)
             {
                 prodLockCmd!.CommandText = "SELECT \"Id\" FROM \"Products\" WHERE \"Id\" = ANY(@ids) ORDER BY \"Id\" FOR UPDATE";

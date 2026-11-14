@@ -190,6 +190,7 @@ public class StockInServiceTests
 
         var supplier = new Supplier { Code = "SUP-001", Name = "Valid Supplier", IsActive = true };
         context.Suppliers.Add(supplier);
+        context.Warehouses.Add(new Warehouse { Code = "WH-TEST", Name = "Test Wh", IsDefault = true, IsActive = true });
 
         var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
         context.SupplierInvoices.Add(invoice);
@@ -400,6 +401,7 @@ public class StockInServiceTests
 
         var product = new Product { Name = "Cancel Prod", Barcode = "CP1", CategoryId = category.Id, CurrentStock = 20, IsActive = true };
         context.Products.Add(product);
+        context.Warehouses.Add(new Warehouse { Code = "WH-TEST2", Name = "Test Wh 2", IsDefault = true, IsActive = true });
         await context.SaveChangesAsync();
         await InventoryReconciler.ReconcileAsync(context);
 

@@ -1,7 +1,7 @@
 # Bằng chứng kiểm tra và hoàn tất B2 (Evidence 8)
 
 ## HEAD Commit & Git Status
-- `git rev-parse --short HEAD`: `2f0fa4c`
+- `git rev-parse --short HEAD`: `9fd7f16`
 - `git status --short`: (Sạch sẽ)
 
 ---
@@ -12,7 +12,7 @@
 ---
 
 ## 2. Test song song Hủy phiếu & Trả nợ (`ConcurrencyTest_CancelStockIn_VsPayment_NoLostPayment`)
-- **Mã test (đã lược bỏ `catch { return false; }`, bắt chính xác `BusinessRuleException`):**
+- **Mã test (đã lược bỏ generic catch, bắt chính xác `BusinessRuleException` và `KeyNotFoundException`):**
   ```csharp
   Task<bool> cancelTask = Task.Run(async () =>
   {
@@ -40,7 +40,7 @@
           await svc.PaySupplierDebtAsync(1, debtId, 5000m, "Pay concurrent");
           return true;
       }
-      catch (BusinessRuleException)
+      catch (Exception ex) when (ex is BusinessRuleException || ex is KeyNotFoundException)
       {
           return false;
       }
@@ -63,6 +63,7 @@
       await using var tx = await context.Database.BeginTransactionAsync();
       var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
 
+      await EnsureWarehouseAsync(context);
       var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier Del", IsActive = true };
       context.Suppliers.Add(supplier);
       var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };

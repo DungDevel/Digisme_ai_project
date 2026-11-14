@@ -230,6 +230,55 @@ public class SupplierDebtFeatureTests
     }
 
     [Fact]
+    public async Task StockIn_PaidAmount_NoDoubleDebtReduction()
+    {
+        var context = _fixture.CreateRealContext();
+        await using var tx = await context.Database.BeginTransactionAsync();
+        var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
+        var debtService = new SupplierDebtService(context);
+
+        var supplier = new Supplier { Code = "NCC-TEST-10", Name = "Supplier 10", IsActive = true };
+        context.Suppliers.Add(supplier);
+        var category = new Category { Name = "Cat 10" };
+        context.Categories.Add(category);
+        await context.SaveChangesAsync();
+
+        var product = new Product { Name = "Prod 10", Barcode = "B-10", CategoryId = category.Id, CurrentStock = 20, IsActive = true };
+        context.Products.Add(product);
+        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+        context.SupplierInvoices.Add(invoice);
+        await context.SaveChangesAsync();
+        await InventoryReconciler.ReconcileAsync(context);
+
+        var req = new ConfirmStockInRequest(
+            invoice.Id,
+            new List<StockInItemRequest> { new(product.Id, 100, 10000m) }, // Total = 1,000,000
+            "Supplier 10",
+            "Note",
+            supplier.Id,
+            PaidAmount: 300000m,
+            PaymentMethod: PaymentMethod.Cash
+        );
+        var sRes = await stockInService.ConfirmStockInAsync(1, req, "idem-b2-nodouble");
+        var stockIn = await context.StockIns.FirstAsync(s => s.Code == sRes.Code);
+
+        var debt = await context.SupplierDebts.FirstAsync(d => d.StockInId == stockIn.Id);
+        Assert.Equal(700000m, debt.Amount);
+        Assert.Equal(0m, debt.PaidAmount);
+
+        await debtService.PaySupplierDebtAsync(1, debt.Id, 200000m, "Additional payment");
+        await context.Entry(debt).ReloadAsync();
+
+        Assert.Equal(500000m, debt.Amount - debt.PaidAmount);
+
+        var autoVoucher = await context.CashVouchers.FirstOrDefaultAsync(v => v.ReferenceType == "StockIn" && v.ReferenceId == stockIn.Code);
+        Assert.NotNull(autoVoucher);
+        Assert.Equal(300000m, autoVoucher!.Amount);
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
     public async Task PaySupplierDebt_ExceedingRemaining_Rejected()
     {
         var context = _fixture.CreateRealContext();

@@ -55,6 +55,14 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        mb.Entity<InventoryReconcileIssue>(e =>
+        {
+            e.ToTable("InventoryReconcileIssues");
+            e.Property(x => x.CurrentStock).HasPrecision(18, 3);
+            e.Property(x => x.TotalWarehouseStock).HasPrecision(18, 3);
+            e.Property(x => x.Diff).HasPrecision(18, 3);
+        });
+
         // ── User ──
         mb.Entity<User>(e =>
         {
@@ -317,6 +325,7 @@ public class AppDbContext : DbContext
             e.Property(x => x.Code).HasMaxLength(32);
             e.Property(x => x.Total).HasPrecision(18, 2);
             e.Property(x => x.PaidAmount).HasPrecision(18, 2);
+            e.Property(x => x.PaymentMethod).HasConversion<int>();
             e.Property(x => x.SupplierName).HasMaxLength(128);
             e.Property(x => x.Status).HasConversion<int>();
             e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);

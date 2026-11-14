@@ -415,6 +415,7 @@ public class StockIn
     public decimal Total { get; set; }
     public decimal PaidAmount { get; set; } = 0m;
     public DateTime? DueDate { get; set; }
+    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
     public string? Note { get; set; }
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

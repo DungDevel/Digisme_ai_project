@@ -179,10 +179,10 @@ public record InventoryAdjustRequest(decimal Amount, string Reason, int? Warehou
 
 // ── Stock-In (M7) ──
 public record StockInItemRequest(int ProductId, decimal Qty, decimal UnitCost);
-public record ConfirmStockInRequest(int InvoiceId, List<StockInItemRequest> Items, string? SupplierName, string? Note, int? SupplierId = null, decimal PaidAmount = 0m, DateTime? DueDate = null);
+public record ConfirmStockInRequest(int InvoiceId, List<StockInItemRequest> Items, string? SupplierName, string? Note, int? SupplierId = null, decimal PaidAmount = 0m, DateTime? DueDate = null, PaymentMethod PaymentMethod = PaymentMethod.Cash);
 public record StockInCreatedResponse(int Id, string Code, decimal Total, DateTime CreatedAt);
-public record StockInCreateRequest(int? WarehouseId, int? SupplierId, string? SupplierName, string? Note, List<StockInItemRequest> Items, decimal PaidAmount = 0m, DateTime? DueDate = null);
-public record StockInUpdateRequest(int? WarehouseId, int? SupplierId, string? SupplierName, string? Note, List<StockInItemRequest> Items, decimal? PaidAmount = null, DateTime? DueDate = null);
+public record StockInCreateRequest(int? WarehouseId, int? SupplierId, string? SupplierName, string? Note, List<StockInItemRequest> Items, decimal PaidAmount = 0m, DateTime? DueDate = null, PaymentMethod PaymentMethod = PaymentMethod.Cash);
+public record StockInUpdateRequest(int? WarehouseId, int? SupplierId, string? SupplierName, string? Note, List<StockInItemRequest> Items, decimal? PaidAmount = null, DateTime? DueDate = null, PaymentMethod? PaymentMethod = null);
 public record StockInItemResponse(int Id, int ProductId, string ProductBarcode, string ProductName, decimal Qty, decimal UnitCost, decimal Total);
 public record StockInResponse(
     int Id,
@@ -197,6 +197,7 @@ public record StockInResponse(
     decimal PaidAmount,
     decimal RemainingAmount,
     DateTime? DueDate,
+    PaymentMethod PaymentMethod,
     string? Note,
     int CreatedBy,
     DateTime CreatedAt,

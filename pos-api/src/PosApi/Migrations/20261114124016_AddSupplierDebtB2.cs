@@ -1,6 +1,5 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -12,6 +11,13 @@ namespace PosApi.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<int>(
+                name: "PaymentMethod",
+                table: "StockIns",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
             migrationBuilder.AddColumn<DateTime>(
                 name: "DueDate",
                 table: "SupplierDebts",
@@ -78,6 +84,10 @@ namespace PosApi.Migrations
 
             migrationBuilder.DropColumn(
                 name: "PaidAmount",
+                table: "StockIns");
+
+            migrationBuilder.DropColumn(
+                name: "PaymentMethod",
                 table: "StockIns");
         }
     }

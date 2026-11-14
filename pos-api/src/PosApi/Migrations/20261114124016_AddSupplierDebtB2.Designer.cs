@@ -12,7 +12,7 @@ using PosApi.Data;
 namespace PosApi.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261114110158_AddSupplierDebtB2")]
+    [Migration("20261114124016_AddSupplierDebtB2")]
     partial class AddSupplierDebtB2
     {
         /// <inheritdoc />
@@ -401,6 +401,39 @@ namespace PosApi.Migrations
                         .HasDatabaseName("ux_idempotency_key_user");
 
                     b.ToTable("IdempotencyRecords");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.InventoryReconcileIssue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("CurrentStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<decimal>("Diff")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalWarehouseStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("InventoryReconcileIssues");
                 });
 
             modelBuilder.Entity("PosApi.Domain.InvoiceDayCounter", b =>
@@ -1122,6 +1155,9 @@ namespace PosApi.Migrations
                     b.Property<decimal>("PaidAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("PaymentMethod")
+                        .HasColumnType("integer");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");

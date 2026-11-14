@@ -27,19 +27,34 @@ public class DatabaseFixture : IDisposable
             {
                 try
                 {
-                    var adminCs = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres";
-                    using var adminConn = new NpgsqlConnection(adminCs);
-                    adminConn.Open();
-                    using var dropCmd = adminConn.CreateCommand();
-                    dropCmd.CommandText = "DROP DATABASE IF EXISTS digism_pos_test_adr WITH (FORCE);";
-                    dropCmd.ExecuteNonQuery();
-                    using var createCmd = adminConn.CreateCommand();
-                    createCmd.CommandText = "CREATE DATABASE digism_pos_test_adr OWNER pos_user;";
-                    createCmd.ExecuteNonQuery();
+                    var options = new DbContextOptionsBuilder<AppDbContext>()
+                        .UseNpgsql(_connectionString).Options;
+                    using var context = new AppDbContext(options);
+                    context.Database.Migrate();
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Console.WriteLine($"DB creation error: {ex.Message}");
+                    try
+                    {
+                        var adminCs = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres";
+                        using var adminConn = new NpgsqlConnection(adminCs);
+                        adminConn.Open();
+                        using var dropCmd = adminConn.CreateCommand();
+                        dropCmd.CommandText = "DROP DATABASE IF EXISTS digism_pos_test_adr WITH (FORCE);";
+                        dropCmd.ExecuteNonQuery();
+                        using var createCmd = adminConn.CreateCommand();
+                        createCmd.CommandText = "CREATE DATABASE digism_pos_test_adr OWNER pos_user;";
+                        createCmd.ExecuteNonQuery();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"DB creation error: {ex.Message}");
+                    }
+
+                    var options = new DbContextOptionsBuilder<AppDbContext>()
+                        .UseNpgsql(_connectionString).Options;
+                    using var context = new AppDbContext(options);
+                    context.Database.Migrate();
                 }
 
                 try
@@ -47,7 +62,6 @@ public class DatabaseFixture : IDisposable
                     var options = new DbContextOptionsBuilder<AppDbContext>()
                         .UseNpgsql(_connectionString).Options;
                     using var context = new AppDbContext(options);
-                    context.Database.Migrate();
 
                     context.Database.ExecuteSqlRaw(
                         "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"TransferSales\" numeric(18,4) NOT NULL DEFAULT 0;" +

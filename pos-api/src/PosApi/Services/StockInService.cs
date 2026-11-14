@@ -206,6 +206,7 @@ public class StockInService : IStockInService
             Total = total,
             PaidAmount = req.PaidAmount,
             DueDate = req.DueDate,
+            PaymentMethod = req.PaymentMethod,
             Note = req.Note?.Trim(),
             CreatedBy = userId,
             CreatedAt = DateTime.UtcNow,
@@ -291,6 +292,7 @@ public class StockInService : IStockInService
         stockIn.Total = total;
         stockIn.PaidAmount = paidAmount;
         stockIn.DueDate = req.DueDate ?? stockIn.DueDate;
+        stockIn.PaymentMethod = req.PaymentMethod ?? stockIn.PaymentMethod;
         stockIn.Note = req.Note?.Trim() ?? stockIn.Note;
 
         _db.StockInItems.RemoveRange(stockIn.Items);
@@ -319,7 +321,8 @@ public class StockInService : IStockInService
         List<StockInItemRequest> items,
         StockIn? existingDraft = null,
         decimal paidAmount = 0m,
-        DateTime? dueDate = null)
+        DateTime? dueDate = null,
+        PaymentMethod paymentMethod = PaymentMethod.Cash)
     {
         var wh = await _db.Warehouses.FirstOrDefaultAsync(w => w.Id == warehouseId && w.IsActive)
             ?? throw new KeyNotFoundException($"Kho hàng {warehouseId} không tồn tại hoặc đã bị vô hiệu");
@@ -383,6 +386,7 @@ public class StockInService : IStockInService
             stockIn.Note = note ?? stockIn.Note;
             stockIn.PaidAmount = paidAmount;
             stockIn.DueDate = dueDate;
+            stockIn.PaymentMethod = paymentMethod;
             stockIn.Status = StockInStatus.Confirmed;
             _db.StockInItems.RemoveRange(stockIn.Items);
         }
@@ -399,6 +403,7 @@ public class StockInService : IStockInService
                 Status = StockInStatus.Confirmed,
                 PaidAmount = paidAmount,
                 DueDate = dueDate,
+                PaymentMethod = paymentMethod,
                 Note = note,
                 CreatedBy = userId,
                 CreatedAt = DateTime.UtcNow
@@ -520,6 +525,7 @@ public class StockInService : IStockInService
 
         if (paidAmount > 0 && resolvedSupplierId.HasValue)
         {
+            var activeShift = await _db.Shifts.FirstOrDefaultAsync(s => s.UserId == userId && s.Status == ShiftStatus.Open);
             var voucherCode = $"PC-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
             var cashVoucher = new CashVoucher
             {
@@ -528,7 +534,8 @@ public class StockInService : IStockInService
                 PartnerType = PartnerType.Supplier,
                 PartnerId = resolvedSupplierId.Value,
                 Amount = paidAmount,
-                PaymentMethod = PaymentMethod.Cash,
+                PaymentMethod = paymentMethod,
+                ShiftId = activeShift?.Id,
                 ReferenceType = "StockIn",
                 ReferenceId = stockIn.Code,
                 Status = CashVoucherStatus.Confirmed,
@@ -539,20 +546,23 @@ public class StockInService : IStockInService
             };
             _db.CashVouchers.Add(cashVoucher);
 
-            var lastCashEntry = await _db.CashLedger.OrderByDescending(x => x.Id).FirstOrDefaultAsync();
-            var currentCashBalance = lastCashEntry?.Balance ?? 0m;
-            var newCashBalance = currentCashBalance - paidAmount;
-            _db.CashLedger.Add(new CashLedgerEntry
+            if (paymentMethod == PaymentMethod.Cash)
             {
-                Amount = -paidAmount,
-                Balance = newCashBalance,
-                PaymentMethod = PaymentMethod.Cash,
-                RefType = "CashVoucher",
-                RefId = voucherCode,
-                Note = $"Chi thanh toán nhập kho {stockIn.Code}",
-                CreatedBy = userId,
-                CreatedAt = DateTime.UtcNow
-            });
+                var lastCashEntry = await _db.CashLedger.OrderByDescending(x => x.Id).FirstOrDefaultAsync();
+                var currentCashBalance = lastCashEntry?.Balance ?? 0m;
+                var newCashBalance = currentCashBalance - paidAmount;
+                _db.CashLedger.Add(new CashLedgerEntry
+                {
+                    Amount = -paidAmount,
+                    Balance = newCashBalance,
+                    PaymentMethod = PaymentMethod.Cash,
+                    RefType = "CashVoucher",
+                    RefId = voucherCode,
+                    Note = $"Chi thanh toán nhập kho {stockIn.Code}",
+                    CreatedBy = userId,
+                    CreatedAt = DateTime.UtcNow
+                });
+            }
         }
 
         await _db.SaveChangesAsync();
@@ -961,6 +971,7 @@ public class StockInService : IStockInService
         s.PaidAmount,
         Math.Max(0m, s.Total - s.PaidAmount),
         s.DueDate,
+        s.PaymentMethod,
         s.Note,
         s.CreatedBy,
         s.CreatedAt,

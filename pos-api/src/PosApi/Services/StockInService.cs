@@ -741,6 +741,11 @@ public class StockInService : IStockInService
             if (stockIn.Status != StockInStatus.Confirmed)
                 throw new BusinessRuleException($"Chỉ có thể hủy phiếu nhập kho ở trạng thái Confirmed (Hiện tại: {stockIn.Status})");
 
+            if (stockIn.PaidAmount > 0)
+            {
+                throw new BusinessRuleException("Không thể hủy phiếu nhập vì đã có phát sinh thanh toán (PaidAmount > 0). Vui lòng sử dụng phiếu trả nhà cung cấp thay thế.");
+            }
+
             var productIds = stockIn.Items.Select(i => i.ProductId).Distinct().OrderBy(id => id).ToList();
             var conn = _db.Database.GetDbConnection();
             if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();

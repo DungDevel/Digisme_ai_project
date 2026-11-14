@@ -61,20 +61,19 @@ public class SupplierDebtFeatureTests
     }
 
     [Fact]
-    public async Task CancelStockIn_WithNoPayment_RemovesDebt_And_BlocksIfPaid()
+    public async Task CancelStockIn_WithPaidAmountZero_RemovesDebt()
     {
         var context = _fixture.CreateRealContext();
         await using var tx = await context.Database.BeginTransactionAsync();
         var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
-        var debtService = new SupplierDebtService(context);
 
-        var supplier = new Supplier { Code = "NCC-TEST-2", Name = "Supplier 2", IsActive = true };
+        var supplier = new Supplier { Code = "NCC-TEST-2A", Name = "Supplier 2A", IsActive = true };
         context.Suppliers.Add(supplier);
-        var category = new Category { Name = "Cat 2" };
+        var category = new Category { Name = "Cat 2A" };
         context.Categories.Add(category);
         await context.SaveChangesAsync();
 
-        var product = new Product { Name = "Prod 2", Barcode = "B-2", CategoryId = category.Id, CurrentStock = 10, IsActive = true };
+        var product = new Product { Name = "Prod 2A", Barcode = "B-2A", CategoryId = category.Id, CurrentStock = 10, IsActive = true };
         context.Products.Add(product);
         var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
         context.SupplierInvoices.Add(invoice);
@@ -84,18 +83,101 @@ public class SupplierDebtFeatureTests
         var req = new ConfirmStockInRequest(
             invoice.Id,
             new List<StockInItemRequest> { new(product.Id, 5, 2000m) },
-            "Supplier 2",
+            "Supplier 2A",
             "Note",
             supplier.Id,
             PaidAmount: 0m
         );
 
-        var res = await stockInService.ConfirmStockInAsync(1, req, "idem-b2-2");
+        var res = await stockInService.ConfirmStockInAsync(1, req, "idem-b2-2a");
         var stockIn = await context.StockIns.FirstAsync(s => s.Code == res.Code);
 
         var debt = await context.SupplierDebts.FirstAsync(d => d.StockInId == stockIn.Id);
         Assert.Equal(10000m, debt.Amount);
 
+        // Cancel stock-in
+        await stockInService.CancelStockInAsync(1, stockIn.Id);
+
+        var debtAfter = await context.SupplierDebts.FirstOrDefaultAsync(d => d.StockInId == stockIn.Id);
+        Assert.Null(debtAfter);
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CancelStockIn_WithPaidAmountGreaterThanZero_Blocked()
+    {
+        var context = _fixture.CreateRealContext();
+        await using var tx = await context.Database.BeginTransactionAsync();
+        var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
+
+        var supplier = new Supplier { Code = "NCC-TEST-2B", Name = "Supplier 2B", IsActive = true };
+        context.Suppliers.Add(supplier);
+        var category = new Category { Name = "Cat 2B" };
+        context.Categories.Add(category);
+        await context.SaveChangesAsync();
+
+        var product = new Product { Name = "Prod 2B", Barcode = "B-2B", CategoryId = category.Id, CurrentStock = 10, IsActive = true };
+        context.Products.Add(product);
+        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+        context.SupplierInvoices.Add(invoice);
+        await context.SaveChangesAsync();
+        await InventoryReconciler.ReconcileAsync(context);
+
+        var req = new ConfirmStockInRequest(
+            invoice.Id,
+            new List<StockInItemRequest> { new(product.Id, 5, 2000m) },
+            "Supplier 2B",
+            "Note",
+            supplier.Id,
+            PaidAmount: 2000m
+        );
+
+        var res = await stockInService.ConfirmStockInAsync(1, req, "idem-b2-2b");
+        var stockIn = await context.StockIns.FirstAsync(s => s.Code == res.Code);
+
+        await Assert.ThrowsAsync<BusinessRuleException>(async () =>
+        {
+            await stockInService.CancelStockInAsync(1, stockIn.Id);
+        });
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CancelStockIn_WithAllocatedPayment_Blocked()
+    {
+        var context = _fixture.CreateRealContext();
+        await using var tx = await context.Database.BeginTransactionAsync();
+        var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
+        var debtService = new SupplierDebtService(context);
+
+        var supplier = new Supplier { Code = "NCC-TEST-2C", Name = "Supplier 2C", IsActive = true };
+        context.Suppliers.Add(supplier);
+        var category = new Category { Name = "Cat 2C" };
+        context.Categories.Add(category);
+        await context.SaveChangesAsync();
+
+        var product = new Product { Name = "Prod 2C", Barcode = "B-2C", CategoryId = category.Id, CurrentStock = 10, IsActive = true };
+        context.Products.Add(product);
+        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+        context.SupplierInvoices.Add(invoice);
+        await context.SaveChangesAsync();
+        await InventoryReconciler.ReconcileAsync(context);
+
+        var req = new ConfirmStockInRequest(
+            invoice.Id,
+            new List<StockInItemRequest> { new(product.Id, 5, 2000m) },
+            "Supplier 2C",
+            "Note",
+            supplier.Id,
+            PaidAmount: 0m
+        );
+
+        var res = await stockInService.ConfirmStockInAsync(1, req, "idem-b2-2c");
+        var stockIn = await context.StockIns.FirstAsync(s => s.Code == res.Code);
+
+        var debt = await context.SupplierDebts.FirstAsync(d => d.StockInId == stockIn.Id);
         await debtService.PaySupplierDebtAsync(1, debt.Id, 4000m, "Partial payment");
 
         await Assert.ThrowsAsync<BusinessRuleException>(async () =>

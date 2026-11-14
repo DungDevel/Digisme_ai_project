@@ -72,3 +72,7 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 - **Vấn đề:** `ProductService.cs:82` (`CreateAsync`) và `ProductService.cs:114` (`UpdateAsync`) khi tạo hoặc cập nhật sản phẩm không khởi tạo hay cập nhật `WarehouseStock`.
 - **Hệ quả:** Dẫn đến sản phẩm có `CurrentStock` nhưng không có dòng `WarehouseStocks`, vi phạm guard Q14 của B1 (`CurrentStock != SUM(WarehouseStocks)`).
 - **Phương án đề xuất:** (Chỉ báo cáo, KHÔNG sửa) Bổ sung khởi tạo `WarehouseStock` tại kho mặc định khi tạo sản phẩm có tồn kho ban đầu.
+
+### Q20: Phân loại phiếu nhập tạo giữa migration B1 và B2 (`IsBackfilled = false`, `PaidAmount = 0`) trong tính lại công nợ
+- **Vấn đề:** Khi chạy tính lại công nợ chế độ apply, các phiếu nhập tạo sau B1 nhưng trước B2 (chưa có cờ backfill lịch sử cũ) có `IsBackfilled = false` nhưng thực tế chưa sinh nợ tự động do tính năng B2 chưa xuất hiện ở thời điểm đó. Nếu áp dụng logic recalculate hiện tại, hệ thống sẽ sinh mới nợ cho các phiếu này, gây lệch số liệu lịch sử.
+- **Phương án đề xuất:** Bổ sung mốc thời gian biên (`B2_ROLLOUT_DATE = 2026-11-14`) hoặc cờ `IsB2Applied` trên `StockIn`. Chế độ tính lại công nợ chỉ áp dụng cho các chứng từ có `CreatedAt >= B2_ROLLOUT_DATE` hoặc `IsBackfilled = true` / `IsB2Applied = true`.

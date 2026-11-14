@@ -145,7 +145,7 @@ public class SupplierDebtService : ISupplierDebtService
             // Lock supplier debts row-level FOR UPDATE
             using (var cmd = conn.CreateCommand() as NpgsqlCommand)
             {
-                cmd!.CommandText = "SELECT \"Id\" FROM \"SupplierDebts\" WHERE \"SupplierId\" = @sid AND \"Status\" <> 2 FOR UPDATE";
+                cmd!.CommandText = "SELECT \"Id\" FROM \"SupplierDebts\" WHERE \"SupplierId\" = @sid AND \"Status\" <> 2 ORDER BY \"Id\" FOR UPDATE";
                 if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
                 {
                     cmd.Transaction = npgTx;
@@ -213,7 +213,7 @@ public class SupplierDebtService : ISupplierDebtService
 
             using (var cmd = conn.CreateCommand() as NpgsqlCommand)
             {
-                cmd!.CommandText = "SELECT \"Id\" FROM \"SupplierDebts\" WHERE \"SupplierId\" = @sid AND \"Status\" <> 2 FOR UPDATE";
+                cmd!.CommandText = "SELECT \"Id\" FROM \"SupplierDebts\" WHERE \"SupplierId\" = @sid AND \"Status\" <> 2 ORDER BY \"Id\" FOR UPDATE";
                 if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
                 {
                     cmd.Transaction = npgTx;

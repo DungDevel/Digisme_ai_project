@@ -181,7 +181,7 @@ public class AppDbContext : DbContext
             e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.StockIn).WithMany().HasForeignKey(x => x.StockInId)
                 .HasConstraintName("FK_SupplierDebts_StockIns_StockInId")
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.SupplierId);
             e.HasIndex(x => x.StockInId)

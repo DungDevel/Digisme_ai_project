@@ -2299,7 +2299,7 @@ namespace PosApi.Migrations
                     b.HasOne("PosApi.Domain.StockIn", "StockIn")
                         .WithMany()
                         .HasForeignKey("StockInId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_SupplierDebts_StockIns_StockInId");
 
                     b.HasOne("PosApi.Domain.Supplier", "Supplier")

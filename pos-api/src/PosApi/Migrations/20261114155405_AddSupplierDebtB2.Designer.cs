@@ -12,7 +12,7 @@ using PosApi.Data;
 namespace PosApi.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261114142020_AddSupplierDebtB2")]
+    [Migration("20261114155405_AddSupplierDebtB2")]
     partial class AddSupplierDebtB2
     {
         /// <inheritdoc />
@@ -2302,7 +2302,7 @@ namespace PosApi.Migrations
                     b.HasOne("PosApi.Domain.StockIn", "StockIn")
                         .WithMany()
                         .HasForeignKey("StockInId")
-                        .OnDelete(DeleteBehavior.SetNull)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("FK_SupplierDebts_StockIns_StockInId");
 
                     b.HasOne("PosApi.Domain.Supplier", "Supplier")

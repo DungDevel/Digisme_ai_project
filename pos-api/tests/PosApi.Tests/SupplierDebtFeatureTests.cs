@@ -402,7 +402,7 @@ public class SupplierDebtFeatureTests
         var supplierService1 = new SupplierDebtService(context1);
         var supplierService2 = new SupplierDebtService(context2);
 
-        var supplier = new Supplier { Code = "NCC-TEST-5", Name = "Supplier 5", IsActive = true };
+        var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 5", IsActive = true };
         context1.Suppliers.Add(supplier);
         await context1.SaveChangesAsync();
 

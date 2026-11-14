@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Dto;
@@ -25,6 +26,32 @@ public class InventoryService : IInventoryService
         _db = db;
         _notificationService = notificationService;
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<InventoryService>.Instance;
+    }
+
+    private async Task<int> ResolveWarehouseIdAsync(int? requestedWarehouseId)
+    {
+        if (requestedWarehouseId.HasValue && requestedWarehouseId.Value > 0)
+        {
+            var wh = await _db.Warehouses.FirstOrDefaultAsync(w => w.Id == requestedWarehouseId.Value && w.IsActive);
+            if (wh == null) throw new KeyNotFoundException($"Kho hàng {requestedWarehouseId.Value} không tồn tại hoặc đã bị vô hiệu");
+            return wh.Id;
+        }
+        var defaultWh = await _db.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
+                        ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive);
+        if (defaultWh == null)
+        {
+            defaultWh = new Warehouse
+            {
+                Code = "WH-DEFAULT",
+                Name = "Kho mặc định",
+                IsDefault = true,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Warehouses.Add(defaultWh);
+            await _db.SaveChangesAsync();
+        }
+        return defaultWh.Id;
     }
 
     public async Task<PagedInventoryResponse> ListInventoryAsync(int page, int pageSize, int? productId, int? categoryId)
@@ -114,6 +141,8 @@ public class InventoryService : IInventoryService
         if (string.IsNullOrWhiteSpace(req.Reason))
             throw new BusinessRuleException("Vui lòng cung cấp lý do điều chỉnh kho");
 
+        var warehouseId = await ResolveWarehouseIdAsync(req.WarehouseId);
+
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
@@ -123,20 +152,61 @@ public class InventoryService : IInventoryService
             var conn = _db.Database.GetDbConnection();
             if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
 
-            using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
+            using (var prodLockCmd = conn.CreateCommand() as NpgsqlCommand)
             {
-                lockCmd!.CommandText = "SELECT \"Id\" FROM \"Products\" WHERE \"Id\" = @pid FOR UPDATE";
-                lockCmd.Parameters.Add(new NpgsqlParameter("@pid", productId));
-                await lockCmd.ExecuteScalarAsync();
+                prodLockCmd!.CommandText = "SELECT \"Id\" FROM \"Products\" WHERE \"Id\" = @pid FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx1) prodLockCmd.Transaction = npgTx1;
+                prodLockCmd.Parameters.Add(new NpgsqlParameter("@pid", productId));
+                await prodLockCmd.ExecuteNonQueryAsync();
+            }
+
+            using (var whStockLockCmd = conn.CreateCommand() as NpgsqlCommand)
+            {
+                whStockLockCmd!.CommandText = "SELECT \"Id\" FROM \"WarehouseStocks\" WHERE \"WarehouseId\" = @whId AND \"ProductId\" = @pid FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx2) whStockLockCmd.Transaction = npgTx2;
+                whStockLockCmd.Parameters.Add(new NpgsqlParameter("@whId", warehouseId));
+                whStockLockCmd.Parameters.Add(new NpgsqlParameter("@pid", productId));
+                await whStockLockCmd.ExecuteNonQueryAsync();
             }
 
             var product = await _db.Products.FindAsync(productId);
             if (product == null) throw new KeyNotFoundException($"Sản phẩm {productId} không tồn tại");
 
+            var whStock = await _db.WarehouseStocks
+                .FirstOrDefaultAsync(s => s.WarehouseId == warehouseId && s.ProductId == productId);
+
+            decimal currentWhStock = whStock?.Stock ?? 0m;
+            decimal newWhStock = currentWhStock + req.Amount;
+
+            if (newWhStock < 0)
+            {
+                if (whStock == null)
+                    throw new BusinessRuleException($"Kho không có tồn sản phẩm này, không thể điều chỉnh giảm ({req.Amount}).");
+                else
+                    throw new BusinessRuleException($"Số lượng điều chỉnh làm tồn kho tại kho này âm ({currentWhStock} + {req.Amount} = {newWhStock}).");
+            }
+
+            if (whStock == null)
+            {
+                whStock = new WarehouseStock
+                {
+                    WarehouseId = warehouseId,
+                    ProductId = productId,
+                    Stock = req.Amount,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _db.WarehouseStocks.Add(whStock);
+            }
+            else
+            {
+                whStock.Stock = newWhStock;
+                whStock.UpdatedAt = DateTime.UtcNow;
+            }
+
             var oldStock = product.CurrentStock;
             var newStock = oldStock + req.Amount;
             if (newStock < 0)
-                throw new BusinessRuleException($"Số lượng điều chỉnh làm tồn kho âm ({oldStock} + {req.Amount} = {newStock})");
+                throw new BusinessRuleException($"Số lượng điều chỉnh làm tổng tồn kho âm ({oldStock} + {req.Amount} = {newStock})");
 
             product.CurrentStock = newStock;
 
@@ -145,6 +215,7 @@ public class InventoryService : IInventoryService
             _db.StockLedger.Add(new StockLedgerEntry
             {
                 ProductId = product.Id,
+                WarehouseId = warehouseId,
                 Qty = req.Amount,
                 Balance = newStock,
                 RefType = LedgerRefType.Adjustment,
@@ -153,7 +224,7 @@ public class InventoryService : IInventoryService
             });
 
             PosLogService.Write(_db, "STOCK_ADJUSTED", userId, "product", product.Id.ToString(),
-                new { delta = req.Amount, oldStock = oldStock, newStock = newStock, reason = req.Reason });
+                new { delta = req.Amount, oldStock = oldStock, newStock = newStock, reason = req.Reason, warehouseId });
 
             await _db.SaveChangesAsync();
             if (tx != null) await tx.CommitAsync();

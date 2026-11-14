@@ -78,6 +78,22 @@ public class DatabaseFixture : IDisposable
 
     public string ConnectionString => _connectionString;
 
+    public AppDbContext CreateRealContext()
+    {
+        lock (_lock)
+        {
+            var connection = new NpgsqlConnection(_connectionString + ";Command Timeout=120;");
+            connection.Open();
+            _connections.Add(connection);
+
+            var options = new DbContextOptionsBuilder<AppDbContext>()
+                .UseNpgsql(connection).Options;
+
+            var context = new AppDbContext(options);
+            return context;
+        }
+    }
+
     /// <summary>
     /// Tạo một context mới với database đã tồn tại.
     /// Sử dụng transaction để test có thể rollback sau khi hoàn thành.

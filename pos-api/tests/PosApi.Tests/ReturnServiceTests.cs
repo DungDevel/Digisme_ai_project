@@ -1071,7 +1071,14 @@ public class ReturnServiceTests
     public async Task CreateReturnAsync_UpdatesWarehouseStockAndLedgerWithWarehouseId()
     {
         var (context, tx) = _fixture.CreateContextWithTransaction();
-        var wh = new Warehouse { Code = "WH-TEST", Name = "Kho Test", IsDefault = true, IsActive = true };
+        var defaultWhs = await context.Warehouses.Where(w => w.IsDefault).ToListAsync();
+        foreach (var dw in defaultWhs)
+        {
+            dw.IsDefault = false;
+        }
+        await context.SaveChangesAsync();
+
+        var wh = new Warehouse { Code = "WHTEST", Name = "Kho Test", IsDefault = true, IsActive = true };
         context.Warehouses.Add(wh);
         await context.SaveChangesAsync();
 

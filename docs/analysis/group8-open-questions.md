@@ -67,3 +67,8 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 ### Q15: Xử lý Idempotency khi dùng chung một Key cho hai phiếu khác nhau (B1)
 - **Vấn đề:** Khi client sử dụng cùng một `Idempotency-Key` cho hai request chốt phiếu nhập kho với nội dung (payload / items / tổng tiền) khác nhau, hệ thống hiện tại so sánh request hash và ném ngoại lệ `ConflictException` ("Idempotency-Key đã được dùng cho nội dung khác").
 - **Phương án đề xuất:** Giữ nguyên hành vi hiện tại (ném ngoại lệ `ConflictException`) nhằm đảm bảo tính toàn vẹn và ngăn chặn client tái sử dụng nhầm khóa cho giao dịch khác. Tài liệu hóa cho đội ngũ frontend/client quy định sinh `Idempotency-Key` mới cho mỗi request nghiệp vụ độc lập.
+
+### Q18: Tạo hoặc sửa sản phẩm không khởi tạo / cập nhật WarehouseStock
+- **Vấn đề:** `ProductService.cs:82` (`CreateAsync`) và `ProductService.cs:114` (`UpdateAsync`) khi tạo hoặc cập nhật sản phẩm không khởi tạo hay cập nhật `WarehouseStock`.
+- **Hệ quả:** Dẫn đến sản phẩm có `CurrentStock` nhưng không có dòng `WarehouseStocks`, vi phạm guard Q14 của B1 (`CurrentStock != SUM(WarehouseStocks)`).
+- **Phương án đề xuất:** (Chỉ báo cáo, KHÔNG sửa) Bổ sung khởi tạo `WarehouseStock` tại kho mặc định khi tạo sản phẩm có tồn kho ban đầu.

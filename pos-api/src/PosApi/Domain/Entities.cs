@@ -191,6 +191,9 @@ public class SupplierDebt
     public DebtStatus Status { get; set; } = DebtStatus.Open;
     public string? ReferenceType { get; set; }              // StockIn, SupplierInvoice, Manual
     public string? ReferenceId { get; set; }
+    public int? StockInId { get; set; }
+    public StockIn? StockIn { get; set; }
+    public DateTime? DueDate { get; set; }
     public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -410,6 +413,8 @@ public class StockIn
     public StockInStatus Status { get; set; } = StockInStatus.Draft;
     public bool IsBackfilled { get; set; } = false;
     public decimal Total { get; set; }
+    public decimal PaidAmount { get; set; } = 0m;
+    public DateTime? DueDate { get; set; }
     public string? Note { get; set; }
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

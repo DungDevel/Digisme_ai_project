@@ -81,6 +81,31 @@ public class StockInService : IStockInService
         return defaultWh.Id;
     }
 
+    private async Task<int> ResolveSupplierIdAsync(int? requestedSupplierId)
+    {
+        if (requestedSupplierId.HasValue && requestedSupplierId.Value > 0)
+        {
+            var s = await _db.Suppliers.FirstOrDefaultAsync(x => x.Id == requestedSupplierId.Value && x.IsActive);
+            if (s == null) throw new KeyNotFoundException($"Nhà cung cấp {requestedSupplierId.Value} không tồn tại hoặc đã bị vô hiệu");
+            return s.Id;
+        }
+        var defaultSupplier = await _db.Suppliers.FirstOrDefaultAsync(s => s.IsActive)
+                        ?? await _db.Suppliers.FirstOrDefaultAsync(s => s.Name == "Nhà cung cấp mặc định");
+        if (defaultSupplier == null)
+        {
+            defaultSupplier = new Supplier
+            {
+                Code = "NCC-SYS-DEF",
+                Name = "Nhà cung cấp mặc định",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Suppliers.Add(defaultSupplier);
+            await _db.SaveChangesAsync();
+        }
+        return defaultSupplier.Id;
+    }
+
     public async Task<PagedStockInResponse> GetStockInsAsync(int? warehouseId, int? supplierId, StockInStatus? status, int page, int pageSize)
     {
         if (pageSize is < 1 or > 100) pageSize = 20;
@@ -166,6 +191,9 @@ public class StockInService : IStockInService
             });
         }
 
+        if (req.PaidAmount < 0 || req.PaidAmount > total)
+            throw new BusinessRuleException("Số tiền đã trả lúc nhập không hợp lệ (phải từ 0 đến tổng tiền)");
+
         var code = $"PHNK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
 
         var stockIn = new StockIn
@@ -176,6 +204,8 @@ public class StockInService : IStockInService
             SupplierName = supplierName ?? "Unknown",
             Status = StockInStatus.Draft,
             Total = total,
+            PaidAmount = req.PaidAmount,
+            DueDate = req.DueDate,
             Note = req.Note?.Trim(),
             CreatedBy = userId,
             CreatedAt = DateTime.UtcNow,
@@ -251,10 +281,16 @@ public class StockInService : IStockInService
             });
         }
 
+        var paidAmount = req.PaidAmount ?? stockIn.PaidAmount;
+        if (paidAmount < 0 || paidAmount > total)
+            throw new BusinessRuleException("Số tiền đã trả lúc nhập không hợp lệ (phải từ 0 đến tổng tiền)");
+
         stockIn.WarehouseId = warehouseId;
         stockIn.SupplierId = supplierId;
         stockIn.SupplierName = supplierName;
         stockIn.Total = total;
+        stockIn.PaidAmount = paidAmount;
+        stockIn.DueDate = req.DueDate ?? stockIn.DueDate;
         stockIn.Note = req.Note?.Trim() ?? stockIn.Note;
 
         _db.StockInItems.RemoveRange(stockIn.Items);
@@ -281,7 +317,9 @@ public class StockInService : IStockInService
         string? note,
         int? invoiceId,
         List<StockInItemRequest> items,
-        StockIn? existingDraft = null)
+        StockIn? existingDraft = null,
+        decimal paidAmount = 0m,
+        DateTime? dueDate = null)
     {
         var wh = await _db.Warehouses.FirstOrDefaultAsync(w => w.Id == warehouseId && w.IsActive)
             ?? throw new KeyNotFoundException($"Kho hàng {warehouseId} không tồn tại hoặc đã bị vô hiệu");
@@ -343,6 +381,8 @@ public class StockInService : IStockInService
             stockIn.SupplierId = supplierId;
             stockIn.SupplierName = supplierName ?? stockIn.SupplierName;
             stockIn.Note = note ?? stockIn.Note;
+            stockIn.PaidAmount = paidAmount;
+            stockIn.DueDate = dueDate;
             stockIn.Status = StockInStatus.Confirmed;
             _db.StockInItems.RemoveRange(stockIn.Items);
         }
@@ -357,6 +397,8 @@ public class StockInService : IStockInService
                 SupplierName = supplierName ?? "Unknown",
                 WarehouseId = warehouseId,
                 Status = StockInStatus.Confirmed,
+                PaidAmount = paidAmount,
+                DueDate = dueDate,
                 Note = note,
                 CreatedBy = userId,
                 CreatedAt = DateTime.UtcNow
@@ -437,9 +479,81 @@ public class StockInService : IStockInService
             });
         }
 
+        if (paidAmount < 0 || paidAmount > total)
+            throw new BusinessRuleException("Số tiền đã trả lúc nhập không hợp lệ (phải từ 0 đến tổng tiền)");
+
+        var remaining = total - paidAmount;
+        int? resolvedSupplierId = supplierId;
+        if ((remaining > 0 || paidAmount > 0) && (!resolvedSupplierId.HasValue || resolvedSupplierId.Value <= 0))
+        {
+            resolvedSupplierId = await ResolveSupplierIdAsync(supplierId);
+            var supObj = await _db.Suppliers.FindAsync(resolvedSupplierId.Value);
+            supplierName = supplierName ?? supObj?.Name ?? "Nhà cung cấp mặc định";
+        }
+
+        stockIn.SupplierId = resolvedSupplierId;
+        stockIn.SupplierName = supplierName ?? stockIn.SupplierName;
         stockIn.Total = total;
+        stockIn.PaidAmount = paidAmount;
+        stockIn.DueDate = dueDate;
         stockIn.Items = stockInItems;
         _db.StockLedger.AddRange(ledgerEntries);
+
+        await _db.SaveChangesAsync();
+
+        if (remaining > 0 && resolvedSupplierId.HasValue)
+        {
+            var supplierDebt = new SupplierDebt
+            {
+                SupplierId = resolvedSupplierId.Value,
+                Amount = remaining,
+                PaidAmount = 0m,
+                Status = DebtStatus.Open,
+                ReferenceType = "StockIn",
+                ReferenceId = stockIn.Code,
+                StockInId = stockIn.Id,
+                DueDate = dueDate,
+                Note = $"Công nợ nhập kho {stockIn.Code}"
+            };
+            _db.SupplierDebts.Add(supplierDebt);
+        }
+
+        if (paidAmount > 0 && resolvedSupplierId.HasValue)
+        {
+            var voucherCode = $"PC-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
+            var cashVoucher = new CashVoucher
+            {
+                Code = voucherCode,
+                Type = CashVoucherType.Payment,
+                PartnerType = PartnerType.Supplier,
+                PartnerId = resolvedSupplierId.Value,
+                Amount = paidAmount,
+                PaymentMethod = PaymentMethod.Cash,
+                ReferenceType = "StockIn",
+                ReferenceId = stockIn.Code,
+                Status = CashVoucherStatus.Confirmed,
+                CreatedBy = userId,
+                CreatedAt = DateTime.UtcNow,
+                ConfirmedAt = DateTime.UtcNow,
+                Note = $"Thanh toán một phần lúc nhập kho {stockIn.Code}"
+            };
+            _db.CashVouchers.Add(cashVoucher);
+
+            var lastCashEntry = await _db.CashLedger.OrderByDescending(x => x.Id).FirstOrDefaultAsync();
+            var currentCashBalance = lastCashEntry?.Balance ?? 0m;
+            var newCashBalance = currentCashBalance - paidAmount;
+            _db.CashLedger.Add(new CashLedgerEntry
+            {
+                Amount = -paidAmount,
+                Balance = newCashBalance,
+                PaymentMethod = PaymentMethod.Cash,
+                RefType = "CashVoucher",
+                RefId = voucherCode,
+                Note = $"Chi thanh toán nhập kho {stockIn.Code}",
+                CreatedBy = userId,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
 
         await _db.SaveChangesAsync();
 
@@ -580,7 +694,7 @@ public class StockInService : IStockInService
                 supplierName = supplier.Name;
             }
 
-            var stockIn = await ConfirmStockInEntitiesAsync(userId, warehouseId, supplierId, supplierName, req.Note, req.InvoiceId, req.Items);
+            var stockIn = await ConfirmStockInEntitiesAsync(userId, warehouseId, supplierId, supplierName, req.Note, req.InvoiceId, req.Items, null, req.PaidAmount, req.DueDate);
 
             var response = new StockInCreatedResponse(stockIn.Id, stockIn.Code, stockIn.Total, stockIn.CreatedAt);
 
@@ -689,6 +803,35 @@ public class StockInService : IStockInService
 
             stockIn.Status = StockInStatus.Cancelled;
             _db.StockLedger.AddRange(reverseLedgerEntries);
+
+            var linkedDebts = await _db.SupplierDebts.Where(d => d.StockInId == stockIn.Id || d.ReferenceId == stockIn.Code).ToListAsync();
+            if (linkedDebts.Any(d => d.PaidAmount > 0))
+            {
+                throw new BusinessRuleException("Không thể hủy phiếu nhập vì đã có phát sinh thanh toán phân bổ vào công nợ của phiếu này");
+            }
+            _db.SupplierDebts.RemoveRange(linkedDebts);
+
+            var linkedVouchers = await _db.CashVouchers.Where(v => v.ReferenceType == "StockIn" && v.ReferenceId == stockIn.Code).ToListAsync();
+            foreach (var v in linkedVouchers)
+            {
+                if (v.Status == CashVoucherStatus.Confirmed)
+                {
+                    var lastCash = await _db.CashLedger.OrderByDescending(x => x.Id).FirstOrDefaultAsync();
+                    var bal = (lastCash?.Balance ?? 0m) + v.Amount;
+                    _db.CashLedger.Add(new CashLedgerEntry
+                    {
+                        Amount = v.Amount,
+                        Balance = bal,
+                        PaymentMethod = v.PaymentMethod,
+                        RefType = "CashVoucherCancel",
+                        RefId = v.Code,
+                        Note = $"Hủy phiếu chi thanh toán nhập kho {stockIn.Code}",
+                        CreatedBy = userId,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                }
+                _db.CashVouchers.Remove(v);
+            }
 
             if (stockIn.SupplierInvoiceId.HasValue)
             {
@@ -815,6 +958,9 @@ public class StockInService : IStockInService
         s.Warehouse?.Name ?? "N/A",
         s.Status,
         s.Total,
+        s.PaidAmount,
+        Math.Max(0m, s.Total - s.PaidAmount),
+        s.DueDate,
         s.Note,
         s.CreatedBy,
         s.CreatedAt,

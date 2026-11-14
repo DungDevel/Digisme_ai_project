@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -21,17 +22,35 @@ namespace PosApi.Migrations
                 type: "numeric",
                 nullable: true);
 
-            migrationBuilder.Sql(@"
-                -- Create InventoryReconcileIssues table if not exists
-                CREATE TABLE IF NOT EXISTS ""InventoryReconcileIssues"" (
-                    ""Id"" SERIAL PRIMARY KEY,
-                    ""ProductId"" INT NOT NULL REFERENCES ""Products""(""Id"") ON DELETE CASCADE,
-                    ""CurrentStock"" NUMERIC(18,3) NOT NULL,
-                    ""TotalWarehouseStock"" NUMERIC(18,3) NOT NULL,
-                    ""Diff"" NUMERIC(18,3) NOT NULL,
-                    ""CreatedAt"" TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
-                );
+            migrationBuilder.CreateTable(
+                name: "InventoryReconcileIssues",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    ProductId = table.Column<int>(type: "integer", nullable: false),
+                    CurrentStock = table.Column<decimal>(type: "numeric(18,3)", precision: 18, scale: 3, nullable: false),
+                    TotalWarehouseStock = table.Column<decimal>(type: "numeric(18,3)", precision: 18, scale: 3, nullable: false),
+                    Diff = table.Column<decimal>(type: "numeric(18,3)", precision: 18, scale: 3, nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InventoryReconcileIssues", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_InventoryReconcileIssues_Products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "Products",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
 
+            migrationBuilder.CreateIndex(
+                name: "IX_InventoryReconcileIssues_ProductId",
+                table: "InventoryReconcileIssues",
+                column: "ProductId");
+
+            migrationBuilder.Sql(@"
                 -- Check if any active products need balancing (CurrentStock > TotalWarehouseStock)
                 -- and ensure an active default warehouse exists.
                 DO $$
@@ -154,11 +173,11 @@ namespace PosApi.Migrations
                 -- 3. Delete StockLedger entries for Q14
                 DELETE FROM ""StockLedger""
                 WHERE ""RefId"" = 'Q14-RECONCILE'
-                  AND ""Note"" = 'Cân bằng số dư đầu kỳ (Q14)';
-
-                -- 4. Drop InventoryReconcileIssues table
-                DROP TABLE IF EXISTS ""InventoryReconcileIssues"";
+                  AND ""Note"" = 'Cân bằng số dư đầu kỳ (Q14)'
             ");
+
+            migrationBuilder.DropTable(
+                name: "InventoryReconcileIssues");
 
             migrationBuilder.DropColumn(
                 name: "CostAfter",

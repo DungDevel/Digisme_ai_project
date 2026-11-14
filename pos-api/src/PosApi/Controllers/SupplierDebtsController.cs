@@ -49,4 +49,28 @@ public class SupplierDebtsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    [HttpGet("aging")]
+    [ProducesResponseType(typeof(List<SupplierDebtAgingResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAging([FromQuery] int? supplierId)
+    {
+        var result = await _service.GetAgingAsync(supplierId);
+        return Ok(result);
+    }
+
+    [HttpPost("recalculate")]
+    [ProducesResponseType(typeof(RecalculateSupplierDebtResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Recalculate([FromBody] RecalculateSupplierDebtRequest req)
+    {
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+        try
+        {
+            var result = await _service.RecalculateAsync(userId, req.Preview);
+            return Ok(result);
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }

@@ -138,6 +138,14 @@ public class CashVoucherService : ICashVoucherService
         voucher.Status = CashVoucherStatus.Confirmed;
         voucher.ConfirmedAt = DateTime.UtcNow;
 
+        if (voucher.Type == CashVoucherType.Payment && voucher.PartnerType == PartnerType.Supplier && voucher.PartnerId.HasValue)
+        {
+            var debtService = new SupplierDebtService(_db);
+            int? stockInId = null;
+            if (int.TryParse(voucher.ReferenceId, out var parsedId)) stockInId = parsedId;
+            await debtService.AllocatePaymentAsync(voucher.PartnerId.Value, voucher.Amount, stockInId, voucher.Note, userId);
+        }
+
         PosLogService.Write(_db, "CASH_VOUCHER_CONFIRMED", userId, "cash_voucher", voucher.Code);
         await _db.SaveChangesAsync();
 

@@ -400,6 +400,39 @@ namespace PosApi.Migrations
                     b.ToTable("IdempotencyRecords");
                 });
 
+            modelBuilder.Entity("PosApi.Domain.InventoryReconcileIssue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("CurrentStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<decimal>("Diff")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("TotalWarehouseStock")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("InventoryReconcileIssues");
+                });
+
             modelBuilder.Entity("PosApi.Domain.InvoiceDayCounter", b =>
                 {
                     b.Property<string>("Day")
@@ -1107,11 +1140,18 @@ namespace PosApi.Migrations
                     b.Property<int>("CreatedBy")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("IsBackfilled")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Note")
                         .HasColumnType("text");
+
+                    b.Property<decimal>("PaidAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -1422,6 +1462,9 @@ namespace PosApi.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Note")
                         .HasColumnType("text");
 
@@ -1438,12 +1481,17 @@ namespace PosApi.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("StockInId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("SupplierId")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("StockInId");
 
                     b.HasIndex("SupplierId");
 
@@ -1906,6 +1954,17 @@ namespace PosApi.Migrations
                     b.Navigation("Customer");
                 });
 
+            modelBuilder.Entity("PosApi.Domain.InventoryReconcileIssue", b =>
+                {
+                    b.HasOne("PosApi.Domain.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("PosApi.Domain.LoyaltyAccount", b =>
                 {
                     b.HasOne("PosApi.Domain.Customer", "Customer")
@@ -2231,11 +2290,18 @@ namespace PosApi.Migrations
 
             modelBuilder.Entity("PosApi.Domain.SupplierDebt", b =>
                 {
+                    b.HasOne("PosApi.Domain.StockIn", "StockIn")
+                        .WithMany()
+                        .HasForeignKey("StockInId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("PosApi.Domain.Supplier", "Supplier")
                         .WithMany()
                         .HasForeignKey("SupplierId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("StockIn");
 
                     b.Navigation("Supplier");
                 });

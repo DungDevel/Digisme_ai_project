@@ -171,7 +171,10 @@ public class AppDbContext : DbContext
         mb.Entity<SupplierDebt>(e =>
         {
             e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.StockIn).WithMany().HasForeignKey(x => x.StockInId).OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.SupplierId);
+            e.HasIndex(x => x.StockInId);
             e.Property(x => x.Amount).HasPrecision(18, 2);
             e.Property(x => x.PaidAmount).HasPrecision(18, 2);
             e.Property(x => x.Status).HasConversion<int>();
@@ -313,6 +316,7 @@ public class AppDbContext : DbContext
             e.HasIndex(x => x.Code).IsUnique();
             e.Property(x => x.Code).HasMaxLength(32);
             e.Property(x => x.Total).HasPrecision(18, 2);
+            e.Property(x => x.PaidAmount).HasPrecision(18, 2);
             e.Property(x => x.SupplierName).HasMaxLength(128);
             e.Property(x => x.Status).HasConversion<int>();
             e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);

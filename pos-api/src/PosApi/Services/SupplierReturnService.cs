@@ -182,6 +182,9 @@ public class SupplierReturnService : ISupplierReturnService
         }
 
         sr.Status = SupplierReturnStatus.Completed;
+
+        var debtService = new SupplierDebtService(_db);
+        await debtService.AllocateReturnAsync(sr.SupplierId, sr.Total, sr.Code, userId);
         PosLogService.Write(_db, "SUPPLIER_RETURN_CONFIRMED", userId, "supplier_return", sr.Code);
         await _db.SaveChangesAsync();
 

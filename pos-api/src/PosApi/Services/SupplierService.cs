@@ -161,6 +161,10 @@ public class SupplierService : ISupplierService
         if (supplier is null || !supplier.IsActive)
             return false;
 
+        var hasDebt = await _db.SupplierDebts.AnyAsync(x => x.SupplierId == id && x.Status != DebtStatus.Settled && (x.Amount - x.PaidAmount > 0));
+        if (hasDebt)
+            throw new BusinessRuleException("Không thể xóa nhà cung cấp vẫn còn số dư công nợ");
+
         supplier.IsActive = false;
         supplier.UpdatedAt = DateTime.UtcNow;
 
@@ -171,23 +175,15 @@ public class SupplierService : ISupplierService
 
     private async Task<string> GenerateNextCodeAsync()
     {
-        for (int i = 0; i < 5; i++)
+        var codes = new HashSet<string>(await _db.Suppliers
+            .Where(x => x.Code.StartsWith("NCC-"))
+            .Select(x => x.Code)
+            .ToListAsync());
+
+        for (int n = 1; n <= 99999; n++)
         {
-            var maxCode = await _db.Suppliers
-                .Where(x => x.Code.StartsWith("NCC-"))
-                .OrderByDescending(x => x.Code)
-                .Select(x => x.Code)
-                .FirstOrDefaultAsync();
-
-            int nextNum = 1;
-            if (maxCode != null && maxCode.Length > 4 && int.TryParse(maxCode.Substring(4), out int parsed))
-            {
-                nextNum = parsed + 1;
-            }
-
-            var candidate = $"NCC-{nextNum:D5}";
-            var exists = await _db.Suppliers.AnyAsync(x => x.Code == candidate);
-            if (!exists) return candidate;
+            var candidate = $"NCC-{n:D5}";
+            if (!codes.Contains(candidate)) return candidate;
         }
 
         return $"NCC-{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}";

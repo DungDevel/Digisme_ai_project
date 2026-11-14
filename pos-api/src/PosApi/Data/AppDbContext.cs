@@ -179,10 +179,15 @@ public class AppDbContext : DbContext
         mb.Entity<SupplierDebt>(e =>
         {
             e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.StockIn).WithMany().HasForeignKey(x => x.StockInId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.StockIn).WithMany().HasForeignKey(x => x.StockInId)
+                .HasConstraintName("FK_SupplierDebts_StockIns_StockInId")
+                .OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(x => x.Status);
             e.HasIndex(x => x.SupplierId);
-            e.HasIndex(x => x.StockInId);
+            e.HasIndex(x => x.StockInId)
+                .IsUnique()
+                .HasFilter("\"StockInId\" IS NOT NULL")
+                .HasDatabaseName("IX_SupplierDebts_StockInId_Unique");
             e.Property(x => x.Amount).HasPrecision(18, 2);
             e.Property(x => x.PaidAmount).HasPrecision(18, 2);
             e.Property(x => x.Status).HasConversion<int>();

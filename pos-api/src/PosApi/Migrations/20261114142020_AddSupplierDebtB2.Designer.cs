@@ -12,7 +12,7 @@ using PosApi.Data;
 namespace PosApi.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261114124016_AddSupplierDebtB2")]
+    [Migration("20261114142020_AddSupplierDebtB2")]
     partial class AddSupplierDebtB2
     {
         /// <inheritdoc />
@@ -433,7 +433,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("InventoryReconcileIssues");
+                    b.ToTable("InventoryReconcileIssues", (string)null);
                 });
 
             modelBuilder.Entity("PosApi.Domain.InvoiceDayCounter", b =>
@@ -1497,7 +1497,10 @@ namespace PosApi.Migrations
 
                     b.HasIndex("Status");
 
-                    b.HasIndex("StockInId");
+                    b.HasIndex("StockInId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_SupplierDebts_StockInId_Unique")
+                        .HasFilter("\"StockInId\" IS NOT NULL");
 
                     b.HasIndex("SupplierId");
 
@@ -2299,7 +2302,8 @@ namespace PosApi.Migrations
                     b.HasOne("PosApi.Domain.StockIn", "StockIn")
                         .WithMany()
                         .HasForeignKey("StockInId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_SupplierDebts_StockIns_StockInId");
 
                     b.HasOne("PosApi.Domain.Supplier", "Supplier")
                         .WithMany()

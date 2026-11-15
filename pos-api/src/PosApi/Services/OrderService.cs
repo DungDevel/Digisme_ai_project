@@ -383,19 +383,8 @@ public class OrderService : IOrderService
 
             // ── Lấy kho mặc định ──
             var defaultWarehouse = await _db.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
-                                   ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive);
-            if (defaultWarehouse == null)
-            {
-                defaultWarehouse = new Warehouse
-                {
-                    Code = "WH-DEFAULT",
-                    Name = "Kho mặc định",
-                    IsDefault = true,
-                    IsActive = true
-                };
-                _db.Warehouses.Add(defaultWarehouse);
-                await _db.SaveChangesAsync();
-            }
+                                   ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive)
+                                   ?? throw new BusinessRuleException("Không tìm thấy kho hoạt động nào để xuất bán hàng.");
             int defaultWarehouseId = defaultWarehouse.Id;
 
             var allNeededProductIds = new HashSet<int>(productIds);
@@ -429,22 +418,9 @@ public class OrderService : IOrderService
             foreach (var line in lines)
             {
                 var whStock = warehouseStocks.FirstOrDefault(s => s.ProductId == line.Product.Id);
-                if (whStock == null)
-                {
-                    whStock = new WarehouseStock
-                    {
-                        WarehouseId = defaultWarehouseId,
-                        ProductId = line.Product.Id,
-                        Stock = line.Product.CurrentStock,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-                    _db.WarehouseStocks.Add(whStock);
-                    warehouseStocks.Add(whStock);
-                }
-
-                if (whStock.Stock < line.Qty)
+                if (whStock == null || whStock.Stock < line.Qty)
                     throw new StockShortageException(
-                        $"Không đủ tồn kho tại kho '{defaultWarehouse.Name}' cho sản phẩm '{line.Product.Name}': còn {whStock.Stock}, cần {line.Qty}");
+                        $"Không đủ tồn kho tại kho '{defaultWarehouse.Name}' cho sản phẩm '{line.Product.Name}': còn {whStock?.Stock ?? 0}, cần {line.Qty}");
 
                 if (line.Qty > line.Product.CurrentStock)
                     throw new StockShortageException(
@@ -467,22 +443,9 @@ public class OrderService : IOrderService
                         var ing = recipe.Ingredient;
                         var requiredIngQty = Round3(recipe.Qty * line.Qty);
                         var ingStock = warehouseStocks.FirstOrDefault(s => s.ProductId == ing.Id);
-                        if (ingStock == null)
-                        {
-                            ingStock = new WarehouseStock
-                            {
-                                WarehouseId = defaultWarehouseId,
-                                ProductId = ing.Id,
-                                Stock = ing.CurrentStock,
-                                UpdatedAt = DateTime.UtcNow
-                            };
-                            _db.WarehouseStocks.Add(ingStock);
-                            warehouseStocks.Add(ingStock);
-                        }
-
-                        if (ingStock.Stock < requiredIngQty)
+                        if (ingStock == null || ingStock.Stock < requiredIngQty)
                             throw new StockShortageException(
-                                $"Không đủ tồn kho nguyên liệu '{ing.Name}' (BOM của '{line.Product.Name}') tại kho '{defaultWarehouse.Name}': còn {ingStock.Stock}, cần {requiredIngQty}");
+                                $"Không đủ tồn kho nguyên liệu '{ing.Name}' (BOM của '{line.Product.Name}') tại kho '{defaultWarehouse.Name}': còn {ingStock?.Stock ?? 0}, cần {requiredIngQty}");
 
                         if (requiredIngQty > ing.CurrentStock)
                             throw new StockShortageException(
@@ -968,19 +931,8 @@ public class OrderService : IOrderService
             throw new BusinessRuleException("Không thể hủy đơn hàng đã hoàn tất.");
 
         var defaultWarehouse = await _db.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
-                               ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive);
-        if (defaultWarehouse == null)
-        {
-            defaultWarehouse = new Warehouse
-            {
-                Code = "WH-DEFAULT",
-                Name = "Kho mặc định",
-                IsDefault = true,
-                IsActive = true
-            };
-            _db.Warehouses.Add(defaultWarehouse);
-            await _db.SaveChangesAsync();
-        }
+                               ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive)
+                               ?? throw new BusinessRuleException("Không tìm thấy kho hoạt động nào để hủy đơn.");
         int defaultWarehouseId = defaultWarehouse.Id;
 
         var ledgerEntries = await _db.StockLedger
@@ -994,37 +946,32 @@ public class OrderService : IOrderService
             if (p != null) p.CurrentStock = Round3(p.CurrentStock + item.Qty);
 
             var ledgerEntry = ledgerEntries.FirstOrDefault(l => l.ProductId == item.ProductId);
-            int whId = ledgerEntry?.WarehouseId ?? defaultWarehouseId;
-
-            var whStock = await _db.WarehouseStocks
-                .FirstOrDefaultAsync(s => s.WarehouseId == whId && s.ProductId == item.ProductId);
-            if (whStock == null)
+            if (ledgerEntry?.WarehouseId is int whId)
             {
-                whStock = new WarehouseStock
+                var whStock = await _db.WarehouseStocks
+                    .FirstOrDefaultAsync(s => s.WarehouseId == whId && s.ProductId == item.ProductId);
+                if (whStock != null)
                 {
-                    WarehouseId = whId,
-                    ProductId = item.ProductId,
-                    Stock = item.Qty,
-                    UpdatedAt = DateTime.UtcNow
-                };
-                _db.WarehouseStocks.Add(whStock);
+                    whStock.Stock = Round3(whStock.Stock + item.Qty);
+                    whStock.UpdatedAt = DateTime.UtcNow;
+
+                    refundEntries.Add(new StockLedgerEntry
+                    {
+                        ProductId = item.ProductId,
+                        WarehouseId = whId,
+                        Qty = item.Qty,
+                        Balance = whStock.Stock,
+                        RefType = LedgerRefType.Adjustment,
+                        RefId = order.Code,
+                        Note = "Hoàn kho hủy đơn"
+                    });
+                }
             }
             else
             {
-                whStock.Stock = Round3(whStock.Stock + item.Qty);
-                whStock.UpdatedAt = DateTime.UtcNow;
+                PosLogService.Write(_db, "ORDER_CANCEL_NO_WAREHOUSE_ID", userId, "order", order.Code, new { item.ProductId });
+                _log.LogWarning("CancelOrderAsync: Ledger entry for product {ProductId} in order {Code} has no WarehouseId. Only CurrentStock refunded.", item.ProductId, order.Code);
             }
-
-            refundEntries.Add(new StockLedgerEntry
-            {
-                ProductId = item.ProductId,
-                WarehouseId = whId,
-                Qty = item.Qty,
-                Balance = whStock.Stock,
-                RefType = LedgerRefType.Adjustment,
-                RefId = order.Code,
-                Note = "Hoàn kho hủy đơn"
-            });
         }
 
         var bomEntries = ledgerEntries.Where(l => l.Note != null && l.Note.Contains("Tiêu hao định lượng BOM")).ToList();

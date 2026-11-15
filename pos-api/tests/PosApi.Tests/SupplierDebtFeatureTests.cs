@@ -628,116 +628,138 @@ public class SupplierDebtFeatureTests
     [Fact]
     public async Task ConcurrencyTest_CancelStockIn_VsPayment_NoLostPayment()
     {
-        using var contextSetup = _fixture.CreateRealContext();
-        await EnsureWarehouseAsync(contextSetup);
-        var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier CC", IsActive = true };
-        contextSetup.Suppliers.Add(supplier);
-        var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
-        contextSetup.Categories.Add(category);
-        await contextSetup.SaveChangesAsync();
+        int? supplierId = null;
+        int? stockInId1 = null;
+        int? stockInId2 = null;
 
-        var product = new Product { Name = "Prod CC", Barcode = "B-" + Guid.NewGuid().ToString("N").Substring(0, 6), CategoryId = category.Id, CurrentStock = 10, IsActive = true };
-        contextSetup.Products.Add(product);
-        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
-        contextSetup.SupplierInvoices.Add(invoice);
-        await contextSetup.SaveChangesAsync();
-        await InventoryReconciler.ReconcileAsync(contextSetup);
-
-        var stockInServiceSetup = new StockInService(contextSetup, new Mock<ILogger<StockInService>>().Object);
-        var req = new ConfirmStockInRequest(
-            invoice.Id,
-            new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
-            "Supplier CC",
-            "Note",
-            supplier.Id,
-            PaidAmount: 0m
-        );
-        var res = await stockInServiceSetup.ConfirmStockInAsync(1, req, Guid.NewGuid().ToString());
-        var stockInId = (await contextSetup.StockIns.FirstAsync(s => s.Code == res.Code)).Id;
-        var debtId = (await contextSetup.SupplierDebts.FirstAsync(d => d.StockInId == stockInId)).Id;
-
-        // Scenario 1: Payment transaction holds row lock (uncommitted), CancelStockIn is invoked concurrently and must block
+        try
         {
-            using var payContext = _fixture.CreateRealContext();
-            await using var payTx = await payContext.Database.BeginTransactionAsync();
-            var paySvc = new SupplierDebtService(payContext);
+            using var contextSetup = _fixture.CreateRealContext();
+            await EnsureWarehouseAsync(contextSetup);
+            var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier CC", IsActive = true };
+            contextSetup.Suppliers.Add(supplier);
+            var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
+            contextSetup.Categories.Add(category);
+            await contextSetup.SaveChangesAsync();
+            supplierId = supplier.Id;
 
-            // Apply payment (acquires FOR UPDATE lock on SupplierDebts row) without committing
-            await paySvc.PaySupplierDebtAsync(1, debtId, 2000m, "Pay holder");
+            var product = new Product { Name = "Prod CC", Barcode = "B-" + Guid.NewGuid().ToString("N").Substring(0, 6), CategoryId = category.Id, CurrentStock = 10, IsActive = true };
+            contextSetup.Products.Add(product);
+            var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+            contextSetup.SupplierInvoices.Add(invoice);
+            await contextSetup.SaveChangesAsync();
+            await InventoryReconciler.ReconcileAsync(contextSetup);
 
-            using var cancelContext = _fixture.CreateRealContext();
-            var cancelSvc = new StockInService(cancelContext, new Mock<ILogger<StockInService>>().Object);
+            var stockInServiceSetup = new StockInService(contextSetup, new Mock<ILogger<StockInService>>().Object);
+            var req = new ConfirmStockInRequest(
+                invoice.Id,
+                new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
+                "Supplier CC",
+                "Note",
+                supplier.Id,
+                PaidAmount: 0m
+            );
+            var res = await stockInServiceSetup.ConfirmStockInAsync(1, req, Guid.NewGuid().ToString());
+            stockInId1 = (await contextSetup.StockIns.FirstAsync(s => s.Code == res.Code)).Id;
+            var debtId = (await contextSetup.SupplierDebts.FirstAsync(d => d.StockInId == stockInId1)).Id;
 
-            var cancelTask = cancelSvc.CancelStockInAsync(1, stockInId);
+            // Scenario 1: Payment transaction holds row lock (uncommitted), CancelStockIn is invoked concurrently and must block
+            {
+                using var payContext = _fixture.CreateRealContext();
+                await using var payTx = await payContext.Database.BeginTransactionAsync();
+                var paySvc = new SupplierDebtService(payContext);
 
-            // Assert cancelTask is blocked by lock (does not complete within 500ms)
-            var completedInTime = await Task.WhenAny(cancelTask, Task.Delay(500)) == cancelTask;
-            Assert.False(completedInTime, "CancelStockIn should be blocked by row lock while payment transaction is active");
+                // Apply payment (acquires FOR UPDATE lock on SupplierDebts row) without committing
+                await paySvc.PaySupplierDebtAsync(1, debtId, 2000m, "Pay holder");
 
-            // Commit payment transaction, releasing lock
-            await payTx.CommitAsync();
+                using var cancelContext = _fixture.CreateRealContext();
+                var cancelSvc = new StockInService(cancelContext, new Mock<ILogger<StockInService>>().Object);
 
-            // CancelStockIn unblocks, sees PaidAmount > 0, and throws BusinessRuleException
-            var ex = await Assert.ThrowsAsync<BusinessRuleException>(async () => await cancelTask);
-            Assert.Contains("phát sinh thanh toán", ex.Message);
+                var cancelTask = cancelSvc.CancelStockInAsync(1, stockInId1.Value);
 
-            // Verify debt has 2000 paid amount, stockIn status is still Confirmed
-            using var verifyContext = _fixture.CreateRealContext();
-            var debtAfter = await verifyContext.SupplierDebts.FirstAsync(d => d.Id == debtId);
-            Assert.Equal(2000m, debtAfter.PaidAmount);
-            var stockInAfter = await verifyContext.StockIns.FirstAsync(s => s.Id == stockInId);
-            Assert.Equal(StockInStatus.Confirmed, stockInAfter.Status);
+                // Assert cancelTask is blocked by lock (does not complete within 500ms)
+                var completedInTime = await Task.WhenAny(cancelTask, Task.Delay(500)) == cancelTask;
+                Assert.False(completedInTime, "CancelStockIn should be blocked by row lock while payment transaction is active");
+
+                // Commit payment transaction, releasing lock
+                await payTx.CommitAsync();
+
+                // CancelStockIn unblocks, sees PaidAmount > 0, and throws BusinessRuleException
+                var ex = await Assert.ThrowsAsync<BusinessRuleException>(async () => await cancelTask);
+                Assert.Contains("phát sinh thanh toán", ex.Message);
+
+                // Verify debt has 2000 paid amount, stockIn status is still Confirmed
+                using var verifyContext = _fixture.CreateRealContext();
+                var debtAfter = await verifyContext.SupplierDebts.FirstAsync(d => d.Id == debtId);
+                Assert.Equal(2000m, debtAfter.PaidAmount);
+                var stockInAfter = await verifyContext.StockIns.FirstAsync(s => s.Id == stockInId1.Value);
+                Assert.Equal(StockInStatus.Confirmed, stockInAfter.Status);
+            }
+
+            // Setup another stock-in and debt for Scenario 2
+            var invoice2 = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+            contextSetup.SupplierInvoices.Add(invoice2);
+            await contextSetup.SaveChangesAsync();
+            var req2 = new ConfirmStockInRequest(
+                invoice2.Id,
+                new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
+                "Supplier CC 2",
+                "Note",
+                supplier.Id,
+                PaidAmount: 0m
+            );
+            var res2 = await stockInServiceSetup.ConfirmStockInAsync(1, req2, Guid.NewGuid().ToString());
+            stockInId2 = (await contextSetup.StockIns.FirstAsync(s => s.Code == res2.Code)).Id;
+            var debtId2 = (await contextSetup.SupplierDebts.FirstAsync(d => d.StockInId == stockInId2.Value)).Id;
+
+            // Scenario 2: CancelStockInAsync (real call) vs PaySupplierDebtAsync using synchronization gate
+            {
+                var gate = new TaskCompletionSource<bool>();
+
+                var cancelTask = Task.Run(async () =>
+                {
+                    using var ctx = _fixture.CreateRealContext();
+                    var svc = new StockInService(ctx, new Mock<ILogger<StockInService>>().Object);
+                    await gate.Task;
+                    return await svc.CancelStockInAsync(1, stockInId2.Value);
+                });
+
+                var payTask = Task.Run(async () =>
+                {
+                    using var ctx = _fixture.CreateRealContext();
+                    var svc = new SupplierDebtService(ctx);
+                    await gate.Task;
+                    await Task.Delay(20);
+                    return await svc.PaySupplierDebtAsync(1, debtId2, 1000m, "Pay concurrent");
+                });
+
+                gate.SetResult(true);
+
+                var cancelRes = await cancelTask;
+                Assert.NotNull(cancelRes);
+
+                await Assert.ThrowsAsync<KeyNotFoundException>(async () => await payTask);
+
+                using var verifyContext2 = _fixture.CreateRealContext();
+                var finalStockIn = await verifyContext2.StockIns.FirstAsync(s => s.Id == stockInId2.Value);
+                Assert.Equal(StockInStatus.Cancelled, finalStockIn.Status);
+                var finalDebt = await verifyContext2.SupplierDebts.FirstOrDefaultAsync(d => d.Id == debtId2);
+                Assert.Null(finalDebt);
+            }
         }
-
-        // Setup another stock-in and debt for Scenario 2
-        var invoice2 = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
-        contextSetup.SupplierInvoices.Add(invoice2);
-        await contextSetup.SaveChangesAsync();
-        var req2 = new ConfirmStockInRequest(
-            invoice2.Id,
-            new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
-            "Supplier CC 2",
-            "Note",
-            supplier.Id,
-            PaidAmount: 0m
-        );
-        var res2 = await stockInServiceSetup.ConfirmStockInAsync(1, req2, Guid.NewGuid().ToString());
-        var stockInId2 = (await contextSetup.StockIns.FirstAsync(s => s.Code == res2.Code)).Id;
-        var debtId2 = (await contextSetup.SupplierDebts.FirstAsync(d => d.StockInId == stockInId2)).Id;
-
-        // Scenario 2: CancelStockInAsync (real call) vs PaySupplierDebtAsync using synchronization gate
+        finally
         {
-            var gate = new TaskCompletionSource<bool>();
-
-            var cancelTask = Task.Run(async () =>
+            using var cleanupContext = _fixture.CreateRealContext();
+            if (stockInId1.HasValue)
             {
-                using var ctx = _fixture.CreateRealContext();
-                var svc = new StockInService(ctx, new Mock<ILogger<StockInService>>().Object);
-                await gate.Task;
-                return await svc.CancelStockInAsync(1, stockInId2);
-            });
-
-            var payTask = Task.Run(async () =>
+                var si1 = await cleanupContext.StockIns.FindAsync(stockInId1.Value);
+                if (si1 != null && si1.Status == StockInStatus.Confirmed) { si1.Status = StockInStatus.Cancelled; await cleanupContext.SaveChangesAsync(); }
+            }
+            if (stockInId2.HasValue)
             {
-                using var ctx = _fixture.CreateRealContext();
-                var svc = new SupplierDebtService(ctx);
-                await gate.Task;
-                await Task.Delay(20);
-                return await svc.PaySupplierDebtAsync(1, debtId2, 1000m, "Pay concurrent");
-            });
-
-            gate.SetResult(true);
-
-            var cancelRes = await cancelTask;
-            Assert.NotNull(cancelRes);
-
-            await Assert.ThrowsAsync<KeyNotFoundException>(async () => await payTask);
-
-            using var verifyContext2 = _fixture.CreateRealContext();
-            var finalStockIn = await verifyContext2.StockIns.FirstAsync(s => s.Id == stockInId2);
-            Assert.Equal(StockInStatus.Cancelled, finalStockIn.Status);
-            var finalDebt = await verifyContext2.SupplierDebts.FirstOrDefaultAsync(d => d.Id == debtId2);
-            Assert.Null(finalDebt);
+                var si2 = await cleanupContext.StockIns.FindAsync(stockInId2.Value);
+                if (si2 != null && si2.Status == StockInStatus.Cancelled) { si2.Status = StockInStatus.Cancelled; await cleanupContext.SaveChangesAsync(); }
+            }
         }
     }
 

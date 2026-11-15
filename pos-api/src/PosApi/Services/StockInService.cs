@@ -775,14 +775,6 @@ public class StockInService : IStockInService
                 await whStockLockCmd.ExecuteNonQueryAsync();
             }
 
-            using (var debtLockCmd = conn.CreateCommand() as NpgsqlCommand)
-            {
-                debtLockCmd!.CommandText = "SELECT \"Id\" FROM \"SupplierDebts\" WHERE \"StockInId\" = @stockInId ORDER BY \"Id\" FOR UPDATE";
-                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTxDebt) debtLockCmd.Transaction = npgTxDebt;
-                debtLockCmd.Parameters.Add(new NpgsqlParameter("@stockInId", stockIn.Id));
-                await debtLockCmd.ExecuteNonQueryAsync();
-            }
-
             var warehouseStocks = await _db.WarehouseStocks
                 .Where(s => s.WarehouseId == stockIn.WarehouseId && productIds.Contains(s.ProductId))
                 .ToListAsync();

@@ -13,7 +13,7 @@ public record AuthResponse(string AccessToken, string Username, string FullName,
 public record ForgotPasswordResponse(string Message, int ValidMinutes);
 
 // ── Products (mẫu Sprint 1) ──
-public record ProductCreateRequest(string Name, int CategoryId, string Barcode, decimal CostPrice, decimal RetailPrice, decimal WholesalePrice, decimal MemberPrice, decimal MinStock, bool IsWeighed, string? ImageUrl, decimal InitialStock = 0m);
+public record ProductCreateRequest(string Name, int CategoryId, string Barcode, decimal CostPrice, decimal RetailPrice, decimal WholesalePrice, decimal MemberPrice, decimal MinStock, bool IsWeighed, string? ImageUrl);
 public record ProductUpdateRequest(string Name, int CategoryId, decimal CostPrice, decimal RetailPrice, decimal WholesalePrice, decimal MemberPrice, decimal MinStock, bool IsWeighed, string? ImageUrl, bool IsActive);
 public record ProductLookupResponse(
     int Id, string Name, string Barcode, int CategoryId, string CategoryName,

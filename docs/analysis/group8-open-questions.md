@@ -71,7 +71,7 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 ### Q18: Tạo hoặc sửa sản phẩm không khởi tạo / cập nhật WarehouseStock
 - **Vấn đề:** `ProductService.cs:82` (`CreateAsync`) và `ProductService.cs:114` (`UpdateAsync`) khi tạo hoặc cập nhật sản phẩm không khởi tạo hay cập nhật `WarehouseStock`.
 - **Hệ quả:** Dẫn đến sản phẩm có `CurrentStock` nhưng không có dòng `WarehouseStocks`, vi phạm guard Q14 của B1 (`CurrentStock != SUM(WarehouseStocks)`).
-- **Trạng thái:** **Đã sửa**. `ProductCreateRequest` đã bổ sung `InitialStock`, và `ProductService.CreateAsync` đã tự động khởi tạo dòng `WarehouseStock` tại kho mặc định (`IsDefault`) kèm bút toán `StockLedger` mở đầu trong cùng một transaction khi `InitialStock > 0`. `ProductUpdateRequest` không cho phép sửa trực tiếp `CurrentStock`, giữ vững bất biến.
+- **Phương án đề xuất:** (Chỉ báo cáo, KHÔNG sửa) Bổ sung khởi tạo `WarehouseStock` tại kho mặc định khi tạo sản phẩm có tồn kho ban đầu.
 
 ### Q20: Phân loại phiếu nhập tạo giữa migration B1 và B2 trong tính lại công nợ
 - **Vấn đề thực tế trong mã nguồn:** Các hằng số `B2_MIGRATION_DATE`, `B2_ROLLOUT_DATE`, `IsB2Applied` hoàn toàn không tồn tại trong mã nguồn thực tế. Quy tắc phân biệt "trước B2" chưa được cài đặt. `RecalculateAsync` trong `SupplierDebtService` chỉ so sánh số dư (`recordedBalance` vs `calculatedBalance`) và báo cáo lệch (discrepancy), KHÔNG tạo hoặc sửa công nợ (`SupplierDebts`). Do đó, phiếu cũ thiếu công nợ sẽ chỉ bị báo lệch (discrepancy) chứ không bị tự động sinh nợ sai.

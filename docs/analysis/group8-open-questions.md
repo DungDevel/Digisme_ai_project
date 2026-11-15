@@ -73,6 +73,7 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 - **Hệ quả:** Dẫn đến sản phẩm có `CurrentStock` nhưng không có dòng `WarehouseStocks`, vi phạm guard Q14 của B1 (`CurrentStock != SUM(WarehouseStocks)`).
 - **Phương án đề xuất:** (Chỉ báo cáo, KHÔNG sửa) Bổ sung khởi tạo `WarehouseStock` tại kho mặc định khi tạo sản phẩm có tồn kho ban đầu.
 
-### Q20: Phân loại phiếu nhập tạo giữa migration B1 và B2 (`IsBackfilled = false`, `PaidAmount = 0`) trong tính lại công nợ
-- **Vấn đề:** Khi chạy tính lại công nợ chế độ apply, các phiếu nhập tạo sau B1 nhưng trước B2 (chưa có cờ backfill lịch sử cũ) có `IsBackfilled = false` nhưng thực tế chưa sinh nợ tự động do tính năng B2 chưa xuất hiện ở thời điểm đó. Nếu áp dụng logic recalculate hiện tại, hệ thống sẽ sinh mới nợ cho các phiếu này, gây lệch số liệu lịch sử.
-- **Phương án đề xuất:** Bổ sung mốc thời gian biên (`B2_ROLLOUT_DATE = 2026-11-14`) hoặc cờ `IsB2Applied` trên `StockIn`. Chế độ tính lại công nợ chỉ áp dụng cho các chứng từ có `CreatedAt >= B2_ROLLOUT_DATE` hoặc `IsBackfilled = true` / `IsB2Applied = true`.
+### Q20: Phân loại phiếu nhập tạo giữa migration B1 và B2 trong tính lại công nợ
+- **Vấn đề thực tế trong mã nguồn:** Các hằng số `B2_MIGRATION_DATE`, `B2_ROLLOUT_DATE`, `IsB2Applied` hoàn toàn không tồn tại trong mã nguồn thực tế. Quy tắc phân biệt "trước B2" chưa được cài đặt. `RecalculateAsync` trong `SupplierDebtService` chỉ so sánh số dư (`recordedBalance` vs `calculatedBalance`) và báo cáo lệch (discrepancy), KHÔNG tạo hoặc sửa công nợ (`SupplierDebts`). Do đó, phiếu cũ thiếu công nợ sẽ chỉ bị báo lệch (discrepancy) chứ không bị tự động sinh nợ sai.
+- **Trạng thái DB & Giả định:** DB dev `digism_pos` hiện có migration B1 nhưng chưa có B2. Lưu ý: nhận định "chưa DB nào áp Q14 bản cũ" và "DB duy nhất là DB dev" là giả định của chủ dự án, không phải điều Claude Code đã xác minh độc lập.
+- **Phương án ghi nhận:** Giữ nguyên hành vi hiện tại của `RecalculateAsync` (chỉ báo lệch, không tự sửa/tạo nợ) để tránh can thiệp ngoài ý muốn.

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage;
 using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Dto;
@@ -306,31 +307,35 @@ public class SupplierDebtFeatureTests
     }
 
     [Fact]
-    public async Task Recalculate_ApplyMode_IgnoresBackfilledOrPreB2StockIns()
+    public async Task Recalculate_ReportsDiscrepancyForOldStockInWithoutDebt()
     {
         var context = _fixture.CreateRealContext();
         await using var tx = await context.Database.BeginTransactionAsync();
         var debtService = new SupplierDebtService(context);
 
-        var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 6", IsActive = true };
+        await EnsureWarehouseAsync(context);
+        var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier Disc", IsActive = true };
         context.Suppliers.Add(supplier);
         await context.SaveChangesAsync();
 
         var oldStockIn = new StockIn
         {
-            Code = "PHNK-OLD-1",
+            Code = "PHNK-OLD-DISC",
             SupplierId = supplier.Id,
             WarehouseId = 1,
             Total = 5000m,
-            IsBackfilled = true,
+            PaidAmount = 0m,
             Status = StockInStatus.Confirmed
         };
         context.StockIns.Add(oldStockIn);
         await context.SaveChangesAsync();
 
-        var res = await debtService.RecalculateAsync(1, preview: false);
+        var res = await debtService.RecalculateAsync(1, preview: true);
         Assert.NotNull(res);
-        Assert.False(res.Preview);
+        var disc = res.Discrepancies.FirstOrDefault(d => d.SupplierId == supplier.Id);
+        Assert.NotNull(disc);
+        Assert.Equal(5000m, disc!.CalculatedBalance);
+        Assert.Equal(0m, disc.RecordedBalance);
 
         await tx.RollbackAsync();
     }
@@ -342,11 +347,37 @@ public class SupplierDebtFeatureTests
         await using var tx = await context.Database.BeginTransactionAsync();
         var debtService = new SupplierDebtService(context);
 
-        var res1 = await debtService.RecalculateAsync(1, preview: false);
-        var res2 = await debtService.RecalculateAsync(1, preview: false);
+        await EnsureWarehouseAsync(context);
+        var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 6", IsActive = true };
+        context.Suppliers.Add(supplier);
+        await context.SaveChangesAsync();
 
-        Assert.NotNull(res1);
-        Assert.NotNull(res2);
+        var debt = new SupplierDebt { SupplierId = supplier.Id, Amount = 5000m, PaidAmount = 1000m, Status = DebtStatus.PartiallyPaid };
+        context.SupplierDebts.Add(debt);
+        await context.SaveChangesAsync();
+
+        var beforeDebts = await context.SupplierDebts
+            .AsNoTracking()
+            .Select(d => new { d.Id, d.Amount, d.PaidAmount })
+            .OrderBy(d => d.Id)
+            .ToListAsync();
+
+        await debtService.RecalculateAsync(1, preview: false);
+        await debtService.RecalculateAsync(1, preview: false);
+
+        var afterDebts = await context.SupplierDebts
+            .AsNoTracking()
+            .Select(d => new { d.Id, d.Amount, d.PaidAmount })
+            .OrderBy(d => d.Id)
+            .ToListAsync();
+
+        Assert.Equal(beforeDebts.Count, afterDebts.Count);
+        for (int i = 0; i < beforeDebts.Count; i++)
+        {
+            Assert.Equal(beforeDebts[i].Id, afterDebts[i].Id);
+            Assert.Equal(beforeDebts[i].Amount, afterDebts[i].Amount);
+            Assert.Equal(beforeDebts[i].PaidAmount, afterDebts[i].PaidAmount);
+        }
 
         await tx.RollbackAsync();
     }
@@ -502,8 +533,10 @@ public class SupplierDebtFeatureTests
             using var context = new AppDbContext(options);
             var migrator = context.Database.GetService<IMigrator>();
 
+            // 1. Migrate up to base B1 migration
             await migrator.MigrateAsync("20261114052118_AddQ14ReconciliationAndQ13Cost");
 
+            // Seed old data
             using (var conn = new NpgsqlConnection(connStr))
             {
                 await conn.OpenAsync();
@@ -519,20 +552,105 @@ public class SupplierDebtFeatureTests
                 await cmd.ExecuteNonQueryAsync();
             }
 
+            // 2. Migrate up (AddSupplierDebtB2)
             await migrator.MigrateAsync();
 
+            // Verify columns exist via separate information_schema queries
             using (var conn = new NpgsqlConnection(connStr))
             {
                 await conn.OpenAsync();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = @"
-                    SELECT COUNT(*) FROM ""StockIns"" WHERE ""Code"" = 'PHNK-OLD';
-                ";
-                var countStockIn = (long)(await cmd.ExecuteScalarAsync() ?? 0L);
+
+                async Task<bool> CheckCol(string table, string col)
+                {
+                    using var c = conn.CreateCommand();
+                    c.CommandText = "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = @t AND column_name = @c";
+                    c.Parameters.Add(new NpgsqlParameter("@t", table));
+                    c.Parameters.Add(new NpgsqlParameter("@c", col));
+                    var cnt = (long)(await c.ExecuteScalarAsync() ?? 0L);
+                    return cnt > 0;
+                }
+
+                Assert.True(await CheckCol("SupplierDebts", "DueDate"));
+                Assert.True(await CheckCol("SupplierDebts", "StockInId"));
+                Assert.True(await CheckCol("StockIns", "DueDate"));
+                Assert.True(await CheckCol("StockIns", "PaidAmount"));
+                Assert.True(await CheckCol("StockIns", "PaymentMethod"));
+
+                // Verify index IX_SupplierDebts_StockInId_Unique exists in pg_indexes
+                using var idxCmd = conn.CreateCommand();
+                idxCmd.CommandText = "SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_SupplierDebts_StockInId_Unique'";
+                var idxCount = (long)(await idxCmd.ExecuteScalarAsync() ?? 0L);
+                Assert.True(idxCount > 0);
+
+                // Verify old data retained
+                using var dataCmd = conn.CreateCommand();
+                dataCmd.CommandText = "SELECT COUNT(*) FROM \"StockIns\" WHERE \"Code\" = 'PHNK-OLD'";
+                var countStockIn = (long)(await dataCmd.ExecuteScalarAsync() ?? 0L);
                 Assert.Equal(1, countStockIn);
             }
 
-            Assert.True(true);
+            // 3. Migrate down to base B1 migration
+            await migrator.MigrateAsync("20261114052118_AddQ14ReconciliationAndQ13Cost");
+
+            // Verify 5 columns disappear, index disappears, old data remains
+            using (var conn = new NpgsqlConnection(connStr))
+            {
+                await conn.OpenAsync();
+
+                async Task<bool> CheckCol(string table, string col)
+                {
+                    using var c = conn.CreateCommand();
+                    c.CommandText = "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = @t AND column_name = @c";
+                    c.Parameters.Add(new NpgsqlParameter("@t", table));
+                    c.Parameters.Add(new NpgsqlParameter("@c", col));
+                    var cnt = (long)(await c.ExecuteScalarAsync() ?? 0L);
+                    return cnt > 0;
+                }
+
+                Assert.False(await CheckCol("SupplierDebts", "DueDate"));
+                Assert.False(await CheckCol("SupplierDebts", "StockInId"));
+                Assert.False(await CheckCol("StockIns", "DueDate"));
+                Assert.False(await CheckCol("StockIns", "PaidAmount"));
+                Assert.False(await CheckCol("StockIns", "PaymentMethod"));
+
+                using var idxCmd = conn.CreateCommand();
+                idxCmd.CommandText = "SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_SupplierDebts_StockInId_Unique'";
+                var idxCount = (long)(await idxCmd.ExecuteScalarAsync() ?? 0L);
+                Assert.Equal(0, idxCount);
+
+                using var dataCmd = conn.CreateCommand();
+                dataCmd.CommandText = "SELECT COUNT(*) FROM \"StockIns\" WHERE \"Code\" = 'PHNK-OLD'";
+                var countStockIn = (long)(await dataCmd.ExecuteScalarAsync() ?? 0L);
+                Assert.Equal(1, countStockIn);
+            }
+
+            // 4. Migrate up again and assert again
+            await migrator.MigrateAsync();
+            using (var conn = new NpgsqlConnection(connStr))
+            {
+                await conn.OpenAsync();
+
+                async Task<bool> CheckCol(string table, string col)
+                {
+                    using var c = conn.CreateCommand();
+                    c.CommandText = "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = @t AND column_name = @c";
+                    c.Parameters.Add(new NpgsqlParameter("@t", table));
+                    c.Parameters.Add(new NpgsqlParameter("@c", col));
+                    var cnt = (long)(await c.ExecuteScalarAsync() ?? 0L);
+                    return cnt > 0;
+                }
+
+                Assert.True(await CheckCol("SupplierDebts", "DueDate"));
+                Assert.True(await CheckCol("SupplierDebts", "StockInId"));
+                Assert.True(await CheckCol("StockIns", "DueDate"));
+                Assert.True(await CheckCol("StockIns", "PaidAmount"));
+                Assert.True(await CheckCol("StockIns", "PaymentMethod"));
+
+                using var idxCmd = conn.CreateCommand();
+                idxCmd.CommandText = "SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_SupplierDebts_StockInId_Unique'";
+                var idxCount = (long)(await idxCmd.ExecuteScalarAsync() ?? 0L);
+                Assert.True(idxCount > 0);
+            }
         }
         finally
         {
@@ -547,90 +665,124 @@ public class SupplierDebtFeatureTests
     [Fact]
     public async Task ConcurrencyTest_CancelStockIn_VsPayment_NoLostPayment()
     {
-        int cancelWins = 0;
-        int payWins = 0;
+        using var contextSetup = _fixture.CreateRealContext();
+        await EnsureWarehouseAsync(contextSetup);
+        var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier CC", IsActive = true };
+        contextSetup.Suppliers.Add(supplier);
+        var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
+        contextSetup.Categories.Add(category);
+        await contextSetup.SaveChangesAsync();
 
-        for (int round = 0; round < 20; round++)
+        var product = new Product { Name = "Prod CC", Barcode = "B-" + Guid.NewGuid().ToString("N").Substring(0, 6), CategoryId = category.Id, CurrentStock = 10, IsActive = true };
+        contextSetup.Products.Add(product);
+        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+        contextSetup.SupplierInvoices.Add(invoice);
+        await contextSetup.SaveChangesAsync();
+        await InventoryReconciler.ReconcileAsync(contextSetup);
+
+        var stockInServiceSetup = new StockInService(contextSetup, new Mock<ILogger<StockInService>>().Object);
+        var req = new ConfirmStockInRequest(
+            invoice.Id,
+            new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
+            "Supplier CC",
+            "Note",
+            supplier.Id,
+            PaidAmount: 0m
+        );
+        var res = await stockInServiceSetup.ConfirmStockInAsync(1, req, Guid.NewGuid().ToString());
+        var stockInId = (await contextSetup.StockIns.FirstAsync(s => s.Code == res.Code)).Id;
+        var debtId = (await contextSetup.SupplierDebts.FirstAsync(d => d.StockInId == stockInId)).Id;
+
+        // Scenario 1: Payment transaction holds row lock (uncommitted), CancelStockIn is invoked concurrently and must block
         {
-            using var context1 = _fixture.CreateRealContext();
-            using var context2 = _fixture.CreateRealContext();
-            var stockInService = new StockInService(context1, new Mock<ILogger<StockInService>>().Object);
-            var debtService = new SupplierDebtService(context2);
+            using var payContext = _fixture.CreateRealContext();
+            await using var payTx = await payContext.Database.BeginTransactionAsync();
+            var paySvc = new SupplierDebtService(payContext);
 
-            await EnsureWarehouseAsync(context1);
-            var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier CC", IsActive = true };
-            context1.Suppliers.Add(supplier);
-            var category = new Category { Name = "Cat " + Guid.NewGuid().ToString("N") };
-            context1.Categories.Add(category);
-            await context1.SaveChangesAsync();
+            // Apply payment (acquires FOR UPDATE lock on SupplierDebts row) without committing
+            await paySvc.PaySupplierDebtAsync(1, debtId, 2000m, "Pay holder");
 
-            var product = new Product { Name = "Prod CC", Barcode = "B-" + Guid.NewGuid().ToString("N").Substring(0, 6), CategoryId = category.Id, CurrentStock = 10, IsActive = true };
-            context1.Products.Add(product);
-            var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
-            context1.SupplierInvoices.Add(invoice);
-            await context1.SaveChangesAsync();
-            await InventoryReconciler.ReconcileAsync(context1);
+            using var cancelContext = _fixture.CreateRealContext();
+            var cancelSvc = new StockInService(cancelContext, new Mock<ILogger<StockInService>>().Object);
 
-            var req = new ConfirmStockInRequest(
-                invoice.Id,
-                new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
-                "Supplier CC",
-                "Note",
-                supplier.Id,
-                PaidAmount: 0m
-            );
+            var cancelTask = cancelSvc.CancelStockInAsync(1, stockInId);
 
-            var res = await stockInService.ConfirmStockInAsync(1, req, Guid.NewGuid().ToString());
-            var stockIn = await context1.StockIns.FirstAsync(s => s.Code == res.Code);
-            var debt = await context1.SupplierDebts.FirstAsync(d => d.StockInId == stockIn.Id);
-            var debtId = debt.Id;
+            // Assert cancelTask is blocked by lock (does not complete within 500ms)
+            var completedInTime = await Task.WhenAny(cancelTask, Task.Delay(500)) == cancelTask;
+            Assert.False(completedInTime, "CancelStockIn should be blocked by row lock while payment transaction is active");
 
-            var tcs = new TaskCompletionSource<bool>();
+            // Commit payment transaction, releasing lock
+            await payTx.CommitAsync();
 
-            Task<bool> cancelTask = Task.Run(async () =>
-            {
-                await tcs.Task;
-                using var ctx = _fixture.CreateRealContext();
-                var svc = new StockInService(ctx, new Mock<ILogger<StockInService>>().Object);
-                try
-                {
-                    await svc.CancelStockInAsync(1, stockIn.Id);
-                    return true;
-                }
-                catch (BusinessRuleException)
-                {
-                    return false;
-                }
-            });
+            // CancelStockIn unblocks, sees PaidAmount > 0, and throws BusinessRuleException
+            var ex = await Assert.ThrowsAsync<BusinessRuleException>(async () => await cancelTask);
+            Assert.Contains("phát sinh thanh toán", ex.Message);
 
-            Task<bool> payTask = Task.Run(async () =>
-            {
-                await tcs.Task;
-                using var ctx = _fixture.CreateRealContext();
-                var svc = new SupplierDebtService(ctx);
-                try
-                {
-                    await svc.PaySupplierDebtAsync(1, debtId, 5000m, "Pay concurrent");
-                    return true;
-                }
-                catch (Exception ex) when (ex is BusinessRuleException || ex is KeyNotFoundException)
-                {
-                    return false;
-                }
-            });
-
-            tcs.SetResult(true);
-            var results = await Task.WhenAll(cancelTask, payTask);
-
-            bool cancelSuccess = results[0];
-            bool paySuccess = results[1];
-
-            Assert.True((cancelSuccess && !paySuccess) || (!cancelSuccess && paySuccess));
-            if (cancelSuccess) cancelWins++;
-            else payWins++;
+            // Verify debt has 2000 paid amount, stockIn status is still Confirmed
+            using var verifyContext = _fixture.CreateRealContext();
+            var debtAfter = await verifyContext.SupplierDebts.FirstAsync(d => d.Id == debtId);
+            Assert.Equal(2000m, debtAfter.PaidAmount);
+            var stockInAfter = await verifyContext.StockIns.FirstAsync(s => s.Id == stockInId);
+            Assert.Equal(StockInStatus.Confirmed, stockInAfter.Status);
         }
 
-        System.Console.WriteLine($"[Concurrency Results] Cancel won: {cancelWins}, Pay won: {payWins}");
+        // Setup another stock-in and debt for Scenario 2
+        var invoice2 = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+        contextSetup.SupplierInvoices.Add(invoice2);
+        await contextSetup.SaveChangesAsync();
+        var req2 = new ConfirmStockInRequest(
+            invoice2.Id,
+            new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
+            "Supplier CC 2",
+            "Note",
+            supplier.Id,
+            PaidAmount: 0m
+        );
+        var res2 = await stockInServiceSetup.ConfirmStockInAsync(1, req2, Guid.NewGuid().ToString());
+        var stockInId2 = (await contextSetup.StockIns.FirstAsync(s => s.Code == res2.Code)).Id;
+        var debtId2 = (await contextSetup.SupplierDebts.FirstAsync(d => d.StockInId == stockInId2)).Id;
+
+        // Scenario 2: Cancel transaction holds row lock (uncommitted), PaySupplierDebt is invoked concurrently and must block
+        {
+            using var cancelContext2 = _fixture.CreateRealContext();
+            await using var cancelTx2 = await cancelContext2.Database.BeginTransactionAsync();
+            var conn = cancelContext2.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+
+            // Acquire lock on SupplierDebts row via raw command under transaction
+            using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
+            {
+                lockCmd!.CommandText = "SELECT \"Id\" FROM \"SupplierDebts\" WHERE \"StockInId\" = @stockInId FOR UPDATE";
+                if (cancelContext2.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
+                    lockCmd.Transaction = npgTx;
+                lockCmd.Parameters.Add(new NpgsqlParameter("@stockInId", stockInId2));
+                await lockCmd.ExecuteScalarAsync();
+            }
+
+            using var payContext2 = _fixture.CreateRealContext();
+            var paySvc2 = new SupplierDebtService(payContext2);
+            var payTask = paySvc2.PaySupplierDebtAsync(1, debtId2, 1000m, "Pay concurrent blocked");
+
+            // Assert payTask is blocked by lock (does not complete within 500ms)
+            var completedInTime = await Task.WhenAny(payTask, Task.Delay(500)) == payTask;
+            Assert.False(completedInTime, "PaySupplierDebt should be blocked by row lock while cancel transaction holds lock");
+
+            // Perform cancellation or delete debt in cancelTx2 and commit
+            using (var cancelCmd = conn.CreateCommand() as NpgsqlCommand)
+            {
+                cancelCmd!.CommandText = "DELETE FROM \"SupplierDebts\" WHERE \"StockInId\" = @stockInId";
+                if (cancelContext2.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx2)
+                    cancelCmd.Transaction = npgTx2;
+                cancelCmd.Parameters.Add(new NpgsqlParameter("@stockInId", stockInId2));
+                await cancelCmd.ExecuteNonQueryAsync();
+            }
+
+            // Commit cancel transaction, releasing lock and removing debt
+            await cancelTx2.CommitAsync();
+
+            // payTask unblocks, tries to lock/find debt, and throws KeyNotFoundException
+            await Assert.ThrowsAsync<KeyNotFoundException>(async () => await payTask);
+        }
     }
 
     [Fact]

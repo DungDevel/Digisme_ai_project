@@ -116,6 +116,47 @@ public class CrudAndImageTests
     }
 
     [Fact]
+    public async Task ProductService_Create_ZeroStock_MaintainsInvariant()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
+        using (tx)
+        {
+            var mockStorage = new Mock<IFileStorageService>();
+            var mockLog = new Mock<ILogger<ProductService>>();
+            var service = new ProductService(context, mockStorage.Object, mockLog.Object);
+
+            var cat = new Category { Name = "Cat Q18 Reg " + Guid.NewGuid().ToString("N") };
+            context.Categories.Add(cat);
+            await context.SaveChangesAsync();
+
+            var createReq = new ProductCreateRequest(
+                Name: "Prod Zero Stock",
+                CategoryId: cat.Id,
+                Barcode: "B-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                CostPrice: 1000m,
+                RetailPrice: 2000m,
+                WholesalePrice: 1500m,
+                MemberPrice: 1200m,
+                MinStock: 2m,
+                IsWeighed: false,
+                ImageUrl: null
+            );
+
+            var productId = await service.CreateAsync(createReq, userId: 1, imageFile: null);
+            var product = await context.Products.FindAsync(productId);
+            Assert.NotNull(product);
+            Assert.Equal(0m, product.CurrentStock);
+
+            var totalWhStock = await context.WarehouseStocks
+                .Where(ws => ws.ProductId == productId)
+                .SumAsync(ws => (decimal?)ws.Stock) ?? 0m;
+
+            Assert.Equal(product.CurrentStock, totalWhStock);
+        }
+    }
+
+    [Fact]
     public async Task FileStorageService_RejectsNonImageFiles()
     {
         var mockEnv = new Mock<IWebHostEnvironment>();

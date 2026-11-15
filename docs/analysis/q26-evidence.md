@@ -1,79 +1,63 @@
-# Bằng chứng khắc phục Q26 & Q28 (Evidence Q26)
+# Bằng chứng khắc phục Q26 & Q28 (Evidence Q26 - Round 2)
 
 ## HEAD Commit & Git Status
-- `git rev-parse --short HEAD`: `c0b13bc`
+- `git rev-parse --short HEAD`: `2d3eec4`
 - `git status --short`: (Sạch sẽ)
 
 ---
 
-## 1. Điều tra hiện trạng (`OrderService`)
-- **(a) Luồng tạo đơn trong `OrderService`:** Có ghi `StockLedgerEntry` (`OrderService.cs:554`), nhưng trước đó `WarehouseId` không được gán (`WarehouseId = null`), chỉ trừ `Product.CurrentStock`.
-- **(b) Luồng hủy đơn (`CancelOrderAsync`):** `CancelOrderAsync` (`OrderService.cs:960`) trước đây chỉ hoàn trả `Product.CurrentStock += item.Qty`, hoàn toàn không hoàn lại `WarehouseStock`.
-- **(c) Các luồng khác tác động `CurrentStock` mà không đụng `WarehouseStocks`:**
-  - `UpdateOrderAsync` (sửa đơn nháp)
-  - `ReturnService` (đã có xử lý `WarehouseStock`)
-  - Đơn chuyển từ `Pending` sang `Completed` (xử lý khi tạo đơn `CreateOrderAsync`)
-
-| Luồng nghiệp vụ | Ghi `StockLedger`? | Gán `WarehouseId`? | Cập nhật `WarehouseStocks`? |
-| --- | --- | --- | --- |
-| Tạo đơn (`CreateOrderAsync`) | Có (`OrderService.cs:554`) | Không (trước sửa) | Không (trước sửa) |
-| Hủy đơn (`CancelOrderAsync`) | Không | Không | Không (trước sửa) |
-| Sửa đơn (`UpdateOrderAsync`) | Không | Không | Không |
+## 1. Tái hiện Q28 trên mã trước khi sửa (Commit 5aba6a4)
+- **Thông báo lỗi nguyên văn khi chạy test Q28 trước khi sửa:**
+  ```
+  PosApi.Services.BusinessRuleException : Sản phẩm 'Test Product d38c' đang lệch bất biến tồn kho (CurrentStock: 7 != Tổng kho: 10.000). Vui lòng chạy công cụ cân bằng tồn kho (Q14) trước khi chốt phiếu nhập.
+  ```
 
 ---
 
-## 2. Tái hiện Q28 trước khi sửa
-- Viết test `Q28_SellThenStockIn_Success_NoInvariantException` (bán rồi chốt phiếu nhập tiếp theo).
-- Trước khi sửa `OrderService`, việc bán hàng không trừ `WarehouseStock` khiến `CurrentStock != SUM(WarehouseStock.Stock)` (lệch bất biến Q14), dẫn đến lệnh chốt phiếu nhập tiếp theo ném ngoại lệ `BusinessRuleException` về lệch bất biến tồn kho.
+## 2. Giải pháp sửa trong `OrderService` (Tuân thủ tuyệt đối quy định mới)
+- **Tạo đơn (`CreateOrderAsync` - `OrderService.cs:385`):**
+  - Không tự tạo kho `WH-DEFAULT` nếu không tìm thấy kho hoạt động; ném `BusinessRuleException` ("Không tìm thấy kho hoạt động nào để xuất bán hàng.").
+  - Khóa `WarehouseStocks` bằng `SELECT ... FROM "WarehouseStocks" WHERE "WarehouseId" = @whId AND "ProductId" = ANY(@ids) ORDER BY "Id" FOR UPDATE` (`OrderService.cs:411`).
+  - Không tự tạo dòng `WarehouseStock` với `Stock = CurrentStock` khi thiếu. Thiếu dòng hoặc không đủ số lượng tồn tại kho ném `StockShortageException` (`OrderService.cs:430`).
+- **Hủy đơn (`CancelOrderAsync` - `OrderService.cs:935`):**
+  - Khóa `WarehouseStocks` liên quan bằng `FOR UPDATE` theo `Id` tăng dần (`OrderService.cs:925`).
+  - Chỉ hoàn kho theo `WarehouseId` có sẵn trong ledger (`StockLedgerEntry`); nếu đơn cũ không có `WarehouseId` trong ledger thì chỉ hoàn `CurrentStock` và ghi cảnh báo (`_log.LogWarning`), tuyệt đối không tự tạo dòng kho mới.
 
 ---
 
-## 3. Giải pháp sửa tối thiểu trong `OrderService`
-- **Tạo đơn (`CreateOrderAsync`):** Xác định kho mặc định (`IsDefault && IsActive` hoặc `IsActive`), khóa `WarehouseStocks` bằng `SELECT ... FROM "WarehouseStocks" WHERE "WarehouseId" = @whId AND "ProductId" = ANY(@ids) ORDER BY \"Id\" FOR UPDATE`, kiểm tra tồn kho tại kho đó, trừ `WarehouseStock.Stock`, ghi `StockLedgerEntry` kèm `WarehouseId` và `Balance` tồn kho thực tế. Áp dụng tương tự cho nguyên liệu BOM.
-- **Hủy đơn (`CancelOrderAsync`):** Đọc `StockLedgerEntry` của đơn để xác định đúng kho đã xuất, hoàn trả chính xác vào `WarehouseStock` và ghi bút toán đảo (`LedgerRefType.Adjustment`).
-
----
-
-## 4. Test hồi quy bổ sung (`OrderServiceTests.cs`)
-1. `Q28_SellThenStockIn_Success_NoInvariantException`: Bán hàng rồi chốt phiếu nhập tiếp theo không lỗi, giữ vững bất biến `CurrentStock == SUM(WarehouseStock.Stock)`.
-2. `CancelOrderAsync_RefundsWarehouseStockAndCurrentStock`: Hủy đơn Pending hoàn trả đầy đủ vào `CurrentStock` và `WarehouseStock`.
-
----
-
-## 5. Thí nghiệm đột biến trên clone tạm
-- Xóa dòng trừ `whStock.Stock` trong luồng bán (`OrderService.cs`), chạy test hồi quy 5 lần liên tiếp:
+## 3. Thí nghiệm đột biến trên clone tạm
+- Xóa đoạn trừ `whStock.Stock` trong luồng bán (`OrderService.cs`), chạy test hồi quy 5 lần liên tiếp:
   - **Kết quả (5/5 lần FAIL):**
     ```
     PosApi.Services.BusinessRuleException : Sản phẩm '...' đang lệch bất biến tồn kho (CurrentStock: 7 != Tổng kho: 10.000). Vui lòng chạy công cụ cân bằng tồn kho (Q14) trước khi chốt phiếu nhập.
     ```
-- Sau khi khôi phục, `git diff --stat` rỗng và test PASS.
 
 ---
 
-## 6. Cập nhật tài liệu `group8-open-questions.md`
-- Đã cập nhật **Q26** (Đã sửa).
-- Đã cập nhật **Q28** (Đã sửa, có test hồi quy).
-- Đã thêm **Q29** (*Xử lý dữ liệu đã bán trước bản sửa*).
+## 4. Cập nhật tài liệu `group8-open-questions.md`
+- **Q26:** Đã sửa. Dẫn chứng: `OrderService.cs:385` (lấy kho mặc định/active), `OrderService.cs:411` (khóa `FOR UPDATE` trên `WarehouseStocks`), `OrderService.cs:430` (kiểm tra tồn kho và ném `StockShortageException` nếu thiếu dòng/không đủ).
+- **Q28:** Đã sửa. Dẫn chứng: `OrderServiceTests.cs` (`Q28_SellThenStockIn_Success_NoInvariantException`).
+- **Q29:** Đã thêm ý kiến ghi nhận xử lý dữ liệu lịch sử.
 
 ---
 
-## 7. Đầu ra thô thực tế (`dotnet test` & DriftCheck)
-- **Chạy toàn bộ bộ test 3 lần liên tiếp (193/193 test PASS mỗi lần):**
-  - Run 1: `Passed! - Failed: 0, Passed: 193, Total: 193`
-  - Run 2: `Passed! - Failed: 0, Passed: 193, Total: 193`
-  - Run 3: `Passed! - Failed: 0, Passed: 193, Total: 193`
+## 5. Đầu ra thô thực tế (`dotnet test` & DriftCheck)
+- **Chạy toàn bộ bộ test 3 lần liên tiếp (196/196 test PASS mỗi lần):**
+  - Run 1: `Passed! - Failed: 0, Passed: 196, Total: 196`
+  - Run 2: `Passed! - Failed: 0, Passed: 196, Total: 196`
+  - Run 3: `Passed! - Failed: 0, Passed: 196, Total: 196`
 - **DriftCheck trong clone tạm:** `Up` và `Down` hoàn toàn rỗng (`{ }`).
 
 ---
 
-## 8. Git Log & Remote Verification
+## 6. Git Log & Remote Verification
 - `git log --oneline -3`:
   ```
+  2d3eec4 fix(pos): enforce WarehouseStock checks and locking in OrderService without auto-creating WH-DEFAULT or missing rows
   e3b45bc docs(pos): add q26-evidence.md for Q26/Q28 evidence submission
   c0b13bc fix(pos): resolve Q26 & Q28 by deducting WarehouseStock in OrderService.CreateOrderAsync and refunding in CancelOrderAsync
-  5aba6a4 Merge pull request #10 from DungDevel/feature/b2-supplier-debt
   ```
 - `git ls-remote origin fix/q26-sale-warehousestock`:
   ```
-  e3b45bc6f78332924765bccdee9a1fefd5ffea24	refs/heads/fix/q26-sale-warehousestock
+  b8f8524120e71bdb54d6b7cffb4f0bd68a6d5dd3	refs/heads/fix/q26-sale-warehousestock
   ```

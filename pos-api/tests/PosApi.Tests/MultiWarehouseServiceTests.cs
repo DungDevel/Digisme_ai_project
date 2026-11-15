@@ -104,7 +104,7 @@ public class MultiWarehouseServiceTests
             Assert.Equal(20m, wh2Stock.Stock); // 0 + 20
 
             // Verify ledger entries created
-            var ledgerCount = await context.StockLedger.CountAsync();
+            var ledgerCount = await context.StockLedger.CountAsync(l => l.RefId == transfer.Code);
             Assert.Equal(2, ledgerCount);
         }
     }

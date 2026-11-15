@@ -20,105 +20,102 @@ public class DatabaseFixture : IDisposable
 
     public DatabaseFixture()
     {
-        _connectionString = "Host=localhost;Port=5432;Database=digism_pos_test_adr;Username=pos_user;Password=pos_pass";
+        _connectionString = "Host=localhost;Port=5432;Database=digism_pos_test_adr;Username=pos_user;Password=pos_pass;Maximum Pool Size=50;Pooling=true;";
         lock (_migrationLock)
         {
-            try
+            if (!_migrated)
             {
-                var adminCs = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres";
-                using var adminConn = new NpgsqlConnection(adminCs);
-                adminConn.Open();
-                using var cmd = adminConn.CreateCommand();
-                cmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = 'digism_pos_test_adr';";
-                var exists = cmd.ExecuteScalar();
-                if (exists == null)
+                try
                 {
+                    var adminCs = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres";
+                    using var adminConn = new NpgsqlConnection(adminCs);
+                    adminConn.Open();
+                    using var dropCmd = adminConn.CreateCommand();
+                    dropCmd.CommandText = "DROP DATABASE IF EXISTS digism_pos_test_adr WITH (FORCE);";
+                    dropCmd.ExecuteNonQuery();
                     using var createCmd = adminConn.CreateCommand();
                     createCmd.CommandText = "CREATE DATABASE digism_pos_test_adr OWNER pos_user;";
                     createCmd.ExecuteNonQuery();
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"DB creation error: {ex.Message}");
-            }
-
-            try
-            {
-                var options = new DbContextOptionsBuilder<AppDbContext>()
-                    .UseNpgsql(_connectionString).Options;
-                using var context = new AppDbContext(options);
-                context.Database.Migrate();
-
-                context.Database.ExecuteSqlRaw(
-                    "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"TransferSales\" numeric(18,4) NOT NULL DEFAULT 0;" +
-                    "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"CountedTransfer\" numeric(18,4) NULL;" +
-                    "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"TransferDiff\" numeric(18,4) NULL;" +
-                    "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"DenominationsJson\" text NULL;"
-                );
-
-                if (!context.StoreSettings.Any())
+                catch (Exception ex)
                 {
-                    context.StoreSettings.Add(new StoreSetting
-                    {
-                        StoreName = "Test Store",
-                        Address = "Test Address",
-                        VatRatePercent = 10m
-                    });
-                    context.SaveChanges();
+                    Console.WriteLine($"DB creation error: {ex.Message}");
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"MIGRATE ERROR: {ex.Message} --- {ex.InnerException?.Message}");
-                throw;
+
+                try
+                {
+                    var options = new DbContextOptionsBuilder<AppDbContext>()
+                        .UseNpgsql(_connectionString).Options;
+                    using var context = new AppDbContext(options);
+                    context.Database.Migrate();
+
+                    context.Database.ExecuteSqlRaw(
+                        "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"TransferSales\" numeric(18,4) NOT NULL DEFAULT 0;" +
+                        "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"CountedTransfer\" numeric(18,4) NULL;" +
+                        "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"TransferDiff\" numeric(18,4) NULL;" +
+                        "ALTER TABLE \"Shifts\" ADD COLUMN IF NOT EXISTS \"DenominationsJson\" text NULL;"
+                    );
+
+                    if (!context.StoreSettings.Any())
+                    {
+                        context.StoreSettings.Add(new StoreSetting
+                        {
+                            StoreName = "Test Store",
+                            Address = "Test Address",
+                            VatRatePercent = 10m
+                        });
+                        context.SaveChanges();
+                    }
+                    _migrated = true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"MIGRATE ERROR: {ex.Message} --- {ex.InnerException?.Message}");
+                    throw;
+                }
             }
         }
     }
 
     public string ConnectionString => _connectionString;
 
+    public AppDbContext CreateRealContext()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(_connectionString + ";Command Timeout=120;").Options;
+        return new AppDbContext(options);
+    }
+
     /// <summary>
     /// Tạo một context mới với database đã tồn tại.
     /// Sử dụng transaction để test có thể rollback sau khi hoàn thành.
     /// </summary>
-    public (AppDbContext context, NpgsqlTransaction transaction) CreateContextWithTransaction()
+    public (AppDbContext context, Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction) CreateContextWithTransaction()
     {
-        lock (_lock)
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(_connectionString + ";Command Timeout=120;").Options;
+        var context = new AppDbContext(options);
+
+        try
         {
-            var connection = new NpgsqlConnection(_connectionString + ";Command Timeout=120;");
-            connection.Open();
-            _connections.Add(connection);
-
-            var options = new DbContextOptionsBuilder<AppDbContext>()
-                .UseNpgsql(connection).Options;
-
-            var context = new AppDbContext(options);
-
-            try
+            if (!context.StoreSettings.Any())
             {
-                if (!context.StoreSettings.Any())
+                context.StoreSettings.Add(new StoreSetting
                 {
-                    context.StoreSettings.Add(new StoreSetting
-                    {
-                        StoreName = "Test Store",
-                        Address = "Test Address",
-                        VatRatePercent = 10m
-                    });
-                    context.SaveChanges();
-                }
+                    StoreName = "Test Store",
+                    Address = "Test Address",
+                    VatRatePercent = 10m
+                });
+                context.SaveChanges();
             }
-            catch
-            {
-                // Ignore if table doesn't exist yet
-            }
-
-            // Sau đó tạo transaction cho các thao tác test
-            var transaction = connection.BeginTransaction();
-            context.Database.UseTransaction(transaction);
-
-            return (context, transaction);
         }
+        catch
+        {
+            // Ignore if table doesn't exist yet
+        }
+
+        var transaction = context.Database.BeginTransaction();
+        return (context, transaction);
     }
 
     /// <summary>

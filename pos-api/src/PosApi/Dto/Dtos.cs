@@ -175,12 +175,35 @@ public record InventoryItemBrief(int ProductId, string ProductName, string Barco
 public record PagedInventoryResponse(int Page, int PageSize, int Total, int TotalPages, List<InventoryItemBrief> Items);
 public record StockHistoryResponse(int ProductId, string ProductName, decimal CurrentStock, List<StockLedgerEntryBrief> History);
 public record StockLedgerEntryBrief(int Id, DateTime CreatedAt, decimal Qty, decimal Balance, string RefType, string RefId, string Note);
-public record InventoryAdjustRequest(decimal Amount, string Reason);
+public record InventoryAdjustRequest(decimal Amount, string Reason, int? WarehouseId = null);
 
 // ── Stock-In (M7) ──
 public record StockInItemRequest(int ProductId, decimal Qty, decimal UnitCost);
-public record ConfirmStockInRequest(int InvoiceId, List<StockInItemRequest> Items, string? SupplierName, string? Note, int? SupplierId = null);
+public record ConfirmStockInRequest(int InvoiceId, List<StockInItemRequest> Items, string? SupplierName, string? Note, int? SupplierId = null, decimal PaidAmount = 0m, DateTime? DueDate = null, PaymentMethod PaymentMethod = PaymentMethod.Cash);
 public record StockInCreatedResponse(int Id, string Code, decimal Total, DateTime CreatedAt);
+public record StockInCreateRequest(int? WarehouseId, int? SupplierId, string? SupplierName, string? Note, List<StockInItemRequest> Items, decimal PaidAmount = 0m, DateTime? DueDate = null, PaymentMethod PaymentMethod = PaymentMethod.Cash);
+public record StockInUpdateRequest(int? WarehouseId, int? SupplierId, string? SupplierName, string? Note, List<StockInItemRequest> Items, decimal? PaidAmount = null, DateTime? DueDate = null, PaymentMethod? PaymentMethod = null);
+public record StockInItemResponse(int Id, int ProductId, string ProductBarcode, string ProductName, decimal Qty, decimal UnitCost, decimal Total);
+public record StockInResponse(
+    int Id,
+    string Code,
+    int? SupplierInvoiceId,
+    int? SupplierId,
+    string? SupplierName,
+    int WarehouseId,
+    string WarehouseName,
+    StockInStatus Status,
+    decimal Total,
+    decimal PaidAmount,
+    decimal RemainingAmount,
+    DateTime? DueDate,
+    PaymentMethod PaymentMethod,
+    string? Note,
+    int CreatedBy,
+    DateTime CreatedAt,
+    List<StockInItemResponse> Items
+);
+public record PagedStockInResponse(int Page, int PageSize, int Total, int TotalPages, List<StockInResponse> Items);
 
 // ── Shifts (Sprint 3) ──
 public record OpenShiftRequest(decimal OpeningCash);
@@ -324,10 +347,18 @@ public record PagedCashLedgerResponse(int Page, int PageSize, int Total, int Tot
 public record GeneralJournalItemResponse(string Id, DateTime Timestamp, string VoucherType, string Code, string Description, decimal Amount, string PartnerName, string CreatedBy);
 public record PagedGeneralJournalResponse(int Page, int PageSize, int Total, int TotalPages, List<GeneralJournalItemResponse> Items);
 
-public record SupplierDebtResponse(int Id, int SupplierId, string SupplierName, decimal Amount, decimal PaidAmount, decimal RemainingAmount, string Status, string? ReferenceType, string? ReferenceId, string? Note, DateTime CreatedAt);
+public record SupplierDebtResponse(int Id, int SupplierId, string SupplierName, decimal Amount, decimal PaidAmount, decimal RemainingAmount, string Status, string? ReferenceType, string? ReferenceId, int? StockInId, DateTime? DueDate, string? Note, DateTime CreatedAt);
 public record PagedSupplierDebtResponse(int Page, int PageSize, int Total, int TotalPages, List<SupplierDebtResponse> Items);
 public record PaySupplierDebtRequest(decimal Amount, string? Note);
 public record PaySupplierDebtResponse(int SupplierDebtId, decimal Amount, decimal PaidAmount, decimal RemainingAmount, string Status);
+
+public record SupplierDebtAgingBucket(decimal Under30, decimal Between30And60, decimal Over60, decimal Overdue);
+public record SupplierDebtAgingResponse(int SupplierId, string SupplierName, decimal TotalRemaining, SupplierDebtAgingBucket Aging);
+public record PagedSupplierDebtAgingResponse(int Page, int PageSize, int Total, int TotalPages, List<SupplierDebtAgingResponse> Items);
+
+public record RecalculateSupplierDebtRequest(bool Preview);
+public record SupplierDebtDiscrepancy(int SupplierId, string SupplierName, decimal RecordedBalance, decimal CalculatedBalance, decimal Difference);
+public record RecalculateSupplierDebtResponse(bool Preview, int TotalSuppliersChecked, int DiscrepanciesFound, List<SupplierDebtDiscrepancy> Discrepancies);
 
 // ─────────────────────────── Reports Đợt 2 DTOs ───────────────────────────
 

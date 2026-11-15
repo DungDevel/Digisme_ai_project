@@ -51,9 +51,18 @@ public class AppDbContext : DbContext
     public DbSet<SupplierDebt> SupplierDebts => Set<SupplierDebt>();
     public DbSet<CashVoucher> CashVouchers => Set<CashVoucher>();
     public DbSet<CashLedgerEntry> CashLedger => Set<CashLedgerEntry>();
+    public DbSet<InventoryReconcileIssue> InventoryReconcileIssues => Set<InventoryReconcileIssue>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        mb.Entity<InventoryReconcileIssue>(e =>
+        {
+            e.ToTable("InventoryReconcileIssues");
+            e.Property(x => x.CurrentStock).HasPrecision(18, 3);
+            e.Property(x => x.TotalWarehouseStock).HasPrecision(18, 3);
+            e.Property(x => x.Diff).HasPrecision(18, 3);
+        });
+
         // ── User ──
         mb.Entity<User>(e =>
         {
@@ -170,7 +179,15 @@ public class AppDbContext : DbContext
         mb.Entity<SupplierDebt>(e =>
         {
             e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.StockIn).WithMany().HasForeignKey(x => x.StockInId)
+                .HasConstraintName("FK_SupplierDebts_StockIns_StockInId")
+                .OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.SupplierId);
+            e.HasIndex(x => x.StockInId)
+                .IsUnique()
+                .HasFilter("\"StockInId\" IS NOT NULL")
+                .HasDatabaseName("IX_SupplierDebts_StockInId_Unique");
             e.Property(x => x.Amount).HasPrecision(18, 2);
             e.Property(x => x.PaidAmount).HasPrecision(18, 2);
             e.Property(x => x.Status).HasConversion<int>();
@@ -312,9 +329,14 @@ public class AppDbContext : DbContext
             e.HasIndex(x => x.Code).IsUnique();
             e.Property(x => x.Code).HasMaxLength(32);
             e.Property(x => x.Total).HasPrecision(18, 2);
+            e.Property(x => x.PaidAmount).HasPrecision(18, 2);
+            e.Property(x => x.PaymentMethod).HasConversion<int>();
             e.Property(x => x.SupplierName).HasMaxLength(128);
+            e.Property(x => x.Status).HasConversion<int>();
             e.HasOne(x => x.Supplier).WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.SupplierId);
+            e.HasIndex(x => x.WarehouseId);
         });
 
         mb.Entity<StockInItem>(e =>
@@ -547,6 +569,18 @@ public class AppDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(x => x.ProductId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        mb.Entity<InventoryReconcileIssue>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.CurrentStock).HasPrecision(18, 3);
+            e.Property(x => x.TotalWarehouseStock).HasPrecision(18, 3);
+            e.Property(x => x.Diff).HasPrecision(18, 3);
+            e.HasOne(x => x.Product)
+                .WithMany()
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

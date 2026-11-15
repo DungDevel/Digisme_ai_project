@@ -133,9 +133,19 @@ public class ReportServiceTests : IAsyncLifetime
         };
         _context.Orders.Add(order);
 
+        var invoice = new SupplierInvoice
+        {
+            Status = SupplierInvoiceStatus.Confirmed,
+            CreatedBy = 1
+        };
+        _context.SupplierInvoices.Add(invoice);
+        await _context.SaveChangesAsync();
+
         var stockIn = new StockIn
         {
             Code = "PHNK-001",
+            Status = StockInStatus.Confirmed,
+            SupplierInvoiceId = invoice.Id,
             Total = 550000m,
             CreatedAt = DateTime.UtcNow
         };
@@ -313,5 +323,63 @@ public class ReportServiceTests : IAsyncLifetime
 
         Assert.Equal(0m, report.TotalRevenue);
         Assert.Equal(0m, report.Subtotal);
+    }
+
+    [Fact]
+    public async Task GetTaxDeclaration_ExcludesManualStockInFromInputVat()
+    {
+        var cat = new Category { Name = "Tax Cat 1" };
+        _context!.Categories.Add(cat);
+        await _context.SaveChangesAsync();
+
+        var stockIn = new StockIn
+        {
+            Code = "PHNK-MANUAL",
+            Status = StockInStatus.Confirmed,
+            SupplierInvoiceId = null,
+            Total = 1000000m,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.StockIns.Add(stockIn);
+        await _context.SaveChangesAsync();
+
+        var service = new ReportService(_context);
+        var report = await service.GetTaxDeclarationAsync(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1));
+
+        Assert.Equal(0m, report.TotalPurchaseAmount);
+        Assert.Equal(0m, report.TotalInputVat);
+    }
+
+    [Fact]
+    public async Task GetTaxDeclaration_ExcludesPendingReviewInvoiceFromInputVat()
+    {
+        var cat = new Category { Name = "Tax Cat 2" };
+        _context!.Categories.Add(cat);
+        await _context.SaveChangesAsync();
+
+        var invoice = new SupplierInvoice
+        {
+            Status = SupplierInvoiceStatus.PendingReview,
+            CreatedBy = 1
+        };
+        _context.SupplierInvoices.Add(invoice);
+        await _context.SaveChangesAsync();
+
+        var stockIn = new StockIn
+        {
+            Code = "PHNK-PENDING",
+            Status = StockInStatus.Confirmed,
+            SupplierInvoiceId = invoice.Id,
+            Total = 1000000m,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.StockIns.Add(stockIn);
+        await _context.SaveChangesAsync();
+
+        var service = new ReportService(_context);
+        var report = await service.GetTaxDeclarationAsync(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1));
+
+        Assert.Equal(0m, report.TotalPurchaseAmount);
+        Assert.Equal(0m, report.TotalInputVat);
     }
 }

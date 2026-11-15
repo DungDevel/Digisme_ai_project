@@ -128,7 +128,12 @@ public class ReportService : IReportService
 
         var stockInsQuery = _context.StockIns
             .AsNoTracking()
-            .Where(s => s.CreatedAt >= startDate && s.CreatedAt <= endDate);
+            .Include(s => s.SupplierInvoice)
+            .Where(s => s.CreatedAt >= startDate && s.CreatedAt <= endDate
+                     && s.Status == StockInStatus.Confirmed
+                     && s.SupplierInvoiceId != null
+                     && s.SupplierInvoice != null
+                     && s.SupplierInvoice.Status == SupplierInvoiceStatus.Confirmed);
 
         var totalPurchaseAmount = await stockInsQuery.SumAsync(s => (decimal?)s.Total) ?? 0m;
         var totalInputVat = totalPurchaseAmount * 0.1m;

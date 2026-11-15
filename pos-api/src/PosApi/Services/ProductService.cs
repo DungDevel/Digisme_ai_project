@@ -101,12 +101,52 @@ public class ProductService : IProductService
             MemberPrice = req.MemberPrice,
             MinStock = req.MinStock,
             IsWeighed = req.IsWeighed,
-            ImageUrl = imageUrl
+            ImageUrl = imageUrl,
+            CurrentStock = req.InitialStock
         };
 
         _db.Products.Add(p);
-        PosLogService.Write(_db, "PRODUCT_CREATED", userId, "product", p.Barcode, new { p.Name });
+        PosLogService.Write(_db, "PRODUCT_CREATED", userId, "product", p.Barcode, new { p.Name, req.InitialStock });
         await _db.SaveChangesAsync();
+
+        if (req.InitialStock > 0)
+        {
+            var defaultWh = await _db.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
+                            ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive);
+            if (defaultWh == null)
+            {
+                defaultWh = new Warehouse
+                {
+                    Code = "WH-DEFAULT",
+                    Name = "Kho mặc định",
+                    IsDefault = true,
+                    IsActive = true
+                };
+                _db.Warehouses.Add(defaultWh);
+                await _db.SaveChangesAsync();
+            }
+
+            _db.WarehouseStocks.Add(new WarehouseStock
+            {
+                WarehouseId = defaultWh.Id,
+                ProductId = p.Id,
+                Stock = req.InitialStock,
+                UpdatedAt = DateTime.UtcNow
+            });
+
+            _db.StockLedger.Add(new StockLedgerEntry
+            {
+                ProductId = p.Id,
+                WarehouseId = defaultWh.Id,
+                Qty = req.InitialStock,
+                Balance = req.InitialStock,
+                RefType = LedgerRefType.Adjustment,
+                RefId = $"INIT-{p.Id}-{Guid.NewGuid():N}",
+                Note = "Tồn đầu kỳ khi tạo sản phẩm"
+            });
+
+            await _db.SaveChangesAsync();
+        }
 
         return p.Id;
     }

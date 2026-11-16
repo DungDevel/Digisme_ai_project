@@ -929,6 +929,19 @@ public class OrderService : IOrderService
             await using var tx = existingTx == null ? await _db.Database.BeginTransactionAsync() : null;
             try
             {
+                var conn = _db.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    await conn.OpenAsync();
+
+                using (var orderLockCmd = conn.CreateCommand() as NpgsqlCommand)
+                {
+                    orderLockCmd!.CommandText = "SELECT \"Id\", \"Status\" FROM \"Orders\" WHERE \"Id\" = @id FOR UPDATE";
+                    if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx0)
+                        orderLockCmd.Transaction = npgTx0;
+                    orderLockCmd.Parameters.Add(new NpgsqlParameter("@id", id));
+                    await orderLockCmd.ExecuteNonQueryAsync();
+                }
+
                 var order = await _db.Orders
                     .Include(o => o.Items)
                     .FirstOrDefaultAsync(o => o.Id == id);
@@ -937,7 +950,7 @@ public class OrderService : IOrderService
                 if (order.Status == OrderStatus.Completed)
                     throw new BusinessRuleException("Không thể hủy đơn hàng đã hoàn tất.");
                 if (order.Status == OrderStatus.Cancelled)
-                    return;
+                    throw new BusinessRuleException("Đơn hàng đã bị hủy trước đó.");
 
                 var defaultWarehouse = await _db.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
                                        ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive)
@@ -965,10 +978,6 @@ public class OrderService : IOrderService
 
                 var distinctPairs = whStockKeys.Distinct().ToList();
                 var whIds = distinctPairs.Select(p => p.WhId).Distinct().ToList();
-
-                var conn = _db.Database.GetDbConnection();
-                if (conn.State != System.Data.ConnectionState.Open)
-                    await conn.OpenAsync();
 
                 foreach (var whId in whIds)
                 {

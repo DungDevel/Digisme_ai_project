@@ -839,6 +839,83 @@ public class OrderServiceTests
         await tx.RollbackAsync();
     }
 
+    [Fact]
+    public async Task CancelOrderAsync_Twice_ThrowsException()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var (userId, product) = await SeedUserAndProduct(context, 10m);
+
+        var req = new CreateOrderRequest(
+            CustomerId: null, PaymentMethod: "VietQr", PaidAmount: 0m, Discount: 0m,
+            Surcharges: new(), Items: new List<OrderItemRequest> { new(product.Id, null, 2m, 10000m) }
+        );
+        var orderService = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var created = await orderService.CreateOrderAsync(userId, req, null);
+
+        await orderService.CancelOrderAsync(created.Id, userId, "First cancel");
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            orderService.CancelOrderAsync(created.Id, userId, "Second cancel"));
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CancelOrderAsync_BOMOrder_RefundsFinishedGoodAndIngredients()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var warehouse = await context.Warehouses.FirstAsync();
+
+        var cashier = new User { Username = "cashier_bom", FullName = "Cashier BOM", Role = UserRole.Cashier };
+        context.Users.Add(cashier);
+        await context.SaveChangesAsync();
+
+        var cat = new Category { Name = "FnB" };
+        context.Categories.Add(cat);
+        await context.SaveChangesAsync();
+
+        var finished = new Product { Name = "Coffee", CategoryId = cat.Id, Barcode = "CF01", RetailPrice = 30000m, CurrentStock = 50m };
+        var ingredient = new Product { Name = "Coffee Bean", CategoryId = cat.Id, Barcode = "BEAN01", CostPrice = 5000m, CurrentStock = 500m };
+        context.Products.AddRange(finished, ingredient);
+        await context.SaveChangesAsync();
+
+        context.WarehouseStocks.AddRange(
+            new WarehouseStock { WarehouseId = warehouse.Id, ProductId = finished.Id, Stock = 50m },
+            new WarehouseStock { WarehouseId = warehouse.Id, ProductId = ingredient.Id, Stock = 500m }
+        );
+        context.ProductRecipes.Add(new ProductRecipe { ProductId = finished.Id, IngredientId = ingredient.Id, Qty = 20m });
+        await context.SaveChangesAsync();
+
+        var orderService = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var req = new CreateOrderRequest(
+            CustomerId: null, PaymentMethod: "VietQr", PaidAmount: 0m, Discount: 0m,
+            Surcharges: new(), Items: new List<OrderItemRequest> { new(finished.Id, null, 2m, 30000m) }
+        );
+
+        var created = await orderService.CreateOrderAsync(cashier.Id, req, "IDEMP-TEST-BOM");
+
+        var fMid = await context.Products.FindAsync(finished.Id);
+        var iMid = await context.Products.FindAsync(ingredient.Id);
+        Assert.Equal(48m, fMid!.CurrentStock);
+        Assert.Equal(460m, iMid!.CurrentStock);
+
+        await orderService.CancelOrderAsync(created.Id, cashier.Id, "Cancel BOM order");
+
+        var fFinal = await context.Products.FindAsync(finished.Id);
+        var iFinal = await context.Products.FindAsync(ingredient.Id);
+        Assert.Equal(50m, fFinal!.CurrentStock);
+        Assert.Equal(500m, iFinal!.CurrentStock);
+
+        var whFinished = await context.WarehouseStocks.FirstAsync(s => s.WarehouseId == warehouse.Id && s.ProductId == finished.Id);
+        var whIngredient = await context.WarehouseStocks.FirstAsync(s => s.WarehouseId == warehouse.Id && s.ProductId == ingredient.Id);
+        Assert.Equal(50m, whFinished.Stock);
+        Assert.Equal(500m, whIngredient.Stock);
+
+        await tx.RollbackAsync();
+    }
+
     // [Fact]
     // public async Task CreateOrderAsync_ConcurrentSales_ExceedingStock_OnlyOneSucceeds() — chưa làm (môi trường xUnit chia sẻ connection pool).
     // {

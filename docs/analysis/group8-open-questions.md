@@ -81,7 +81,7 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 - **Trạng thái:** **Đã sửa**. Đã khắc phục tại `OrderService` (`pos-api/src/PosApi/Services/OrderService.cs:62`, `923`), kiểm thử bằng test hồi quy `Q28_SellThenStockIn_Success_NoInvariantException` (`pos-api/tests/PosApi.Tests/OrderServiceTests.cs:816`).
 
 ### Q29: Xử lý dữ liệu đã bán trước bản sửa
-- **Vấn đề:** Dữ liệu đã bán trước bản sửa đang có `CurrentStock < SUM(WarehouseStocks)` (hoặc ngược lại); cần quyết định cách sửa dữ liệu cũ, vì `ReconcileAsync` (Q14) chỉ xử lý `diff > 0` (`CurrentStock > SUM(WarehouseStocks)`) và không được gọi tự động từ mã ứng dụng.
+- **Vấn đề:** Dữ liệu đã bán trước bản sửa đang có `CurrentStock < SUM(WarehouseStocks)` (hoặc ngược lại); cần quyết định cách sửa dữ liệu cũ, vì `ReconcileAsync` (Q14) chỉ xử lý `diff > 0` (`CurrentStock > SUM(WarehouseStocks)`) và không được gọi tự động từ mã ứng dụng. Ngoài ra, việc hủy đơn cũ không có `WarehouseId` (`OrderService.cs:923`) chỉ hoàn `CurrentStock` mà không hoàn `WarehouseStocks`, gây lệch `CurrentStock > SUM`.
 - **Phương án đề xuất:** (Chỉ ghi nhận) Xây dựng script migration hoặc công cụ quản trị chạy một lần để cân bằng lại `WarehouseStocks` cho các giao dịch lịch sử.
 
 ### Q20: Phân loại phiếu nhập tạo giữa migration B1 và B2 trong tính lại công nợ

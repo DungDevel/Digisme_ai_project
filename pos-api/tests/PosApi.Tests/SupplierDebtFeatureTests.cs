@@ -766,39 +766,26 @@ public class SupplierDebtFeatureTests
     [Fact]
     public async Task ConcurrencyTest_ParallelPayments_WithLock()
     {
-        using var contextSetup = _fixture.CreateRealContext();
+        using var context1 = _fixture.CreateRealContext();
+        using var context2 = _fixture.CreateRealContext();
+        var supplierService1 = new SupplierDebtService(context1);
+        var supplierService2 = new SupplierDebtService(context2);
+
         var supplier = new Supplier { Code = "NCC-" + Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper(), Name = "Supplier 5", IsActive = true };
-        contextSetup.Suppliers.Add(supplier);
-        await contextSetup.SaveChangesAsync();
+        context1.Suppliers.Add(supplier);
+        await context1.SaveChangesAsync();
 
         var debt = new SupplierDebt { SupplierId = supplier.Id, Amount = 10000m, PaidAmount = 0m };
-        contextSetup.SupplierDebts.Add(debt);
-        await contextSetup.SaveChangesAsync();
+        context1.SupplierDebts.Add(debt);
+        await context1.SaveChangesAsync();
         var debtId = debt.Id;
 
-        var gate = new TaskCompletionSource<bool>();
-        var t1 = Task.Run(async () =>
-        {
-            using var ctx = _fixture.CreateRealContext();
-            var svc = new SupplierDebtService(ctx);
-            await gate.Task;
-            return await svc.PaySupplierDebtAsync(1, debtId, 3000m, "Pay 1");
-        });
-
-        var t2 = Task.Run(async () =>
-        {
-            using var ctx = _fixture.CreateRealContext();
-            var svc = new SupplierDebtService(ctx);
-            await gate.Task;
-            return await svc.PaySupplierDebtAsync(1, debtId, 4000m, "Pay 2");
-        });
-
-        gate.SetResult(true);
+        var t1 = supplierService1.PaySupplierDebtAsync(1, debtId, 3000m, "Pay 1");
+        var t2 = supplierService2.PaySupplierDebtAsync(1, debtId, 4000m, "Pay 2");
 
         await Task.WhenAll(t1, t2);
 
-        using var verifyCtx = _fixture.CreateRealContext();
-        var debtAfter = await verifyCtx.SupplierDebts.FindAsync(debtId);
-        Assert.Equal(7000m, debtAfter!.PaidAmount);
+        await context1.Entry(debt).ReloadAsync();
+        Assert.Equal(7000m, debt.PaidAmount);
     }
 }

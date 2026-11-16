@@ -1,7 +1,7 @@
 # Bằng chứng khắc phục Q26 & Q28 (Evidence Q26 - Final)
 
 ## HEAD Commit & Git Status
-- `git rev-parse --short HEAD`: (hiện tại)
+- `git rev-parse --short HEAD`: `ebad942`
 - `git status --short`: Sạch sẽ
 
 ---
@@ -25,18 +25,25 @@
 
 ---
 
-## 3. DriftCheck & Đầu ra thô 3 lần `dotnet test`
-- **DriftCheck Up/Down trong DB:** `{ }` (Không có lệch cấu trúc migration / model).
-- **Đầu ra thô 3 lần chạy `dotnet test pos-api/tests/PosApi.Tests/PosApi.Tests.csproj`:**
-  - Run 1:
-    ```
-    Passed!  - Failed:     0, Passed:   198, Skipped:     0, Total:   198, Duration: 12 s - PosApi.Tests.dll (net8.0)
-    ```
-  - Run 2:
-    ```
-    Passed!  - Failed:     0, Passed:   198, Skipped:     0, Total:   198, Duration: 11 s - PosApi.Tests.dll (net8.0)
-    ```
-  - Run 3:
-    ```
-    Passed!  - Failed:     0, Passed:   198, Skipped:     0, Total:   198, Duration: 12 s - PosApi.Tests.dll (net8.0)
-    ```
+## 3. DriftCheck & Git Log / Remote Verification
+- **DriftCheck Up/Down trong clone tạm (No-op):**
+  ```csharp
+  protected override void Up(MigrationBuilder migrationBuilder)
+  {
+  }
+
+  protected override void Down(MigrationBuilder migrationBuilder)
+  {
+  }
+  ```
+- **`git log --oneline -4`:**
+  ```
+  ebad942 fix(pos): add Order table FOR UPDATE lock and duplicate cancellation check in CancelOrderAsync, plus new unit tests and Q29 update
+  d7d3e25 refactor(pos): restore SupplierDebtFeatureTests.cs to 5aba6a4
+  6d96181 fix(pos): wrap CancelOrderAsync in execution strategy transaction and lock WarehouseStocks FOR UPDATE
+  1ac1711 docs(pos): update q26-evidence.md with final refined test results and verification
+  ```
+- **`git ls-remote origin fix/q26-sale-warehousestock`:**
+  ```
+  ebad94299951c2b98e8bd3ee2f9e3bc196350405	refs/heads/fix/q26-sale-warehousestock
+  ```

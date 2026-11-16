@@ -70,11 +70,15 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 
 ### Q26: Bán hàng không trừ tồn kho theo kho (`WarehouseStocks`)
 - **Vấn đề:** `OrderService.CreateOrderAsync` trước đây chỉ trừ `Product.CurrentStock` mà không trừ `WarehouseStock` của kho xuất, dẫn đến lệch bất biến tồn kho Q14 khi nhập kho tiếp theo.
-- **Trạng thái:** **Đã sửa**. `OrderService` đã được bổ sung logic khóa dòng `WarehouseStocks` bằng `FOR UPDATE`, kiểm tra tồn kho tại kho mặc định, trừ `WarehouseStock.Stock`, ghi `StockLedgerEntry` kèm `WarehouseId`, và hoàn kho chính xác trong `CancelOrderAsync`.
+- **Trạng thái:** **Đã sửa**. `OrderService` (`pos-api/src/PosApi/Services/OrderService.cs:62`, `923`) không tự tạo kho `WH-DEFAULT` hay `WarehouseStock`, thiếu dòng tồn kho tại kho sẽ ném `StockShortageException`, hủy đơn cũ không có `WarehouseId` chỉ hoàn `CurrentStock` và ghi `PosLog`, đồng thời bọc giao dịch, khóa `FOR UPDATE` các dòng `WarehouseStocks` theo Id tăng dần.
+
+### Q27: Trả nhà cung cấp trừ `WarehouseStocks` nhưng không trừ `CurrentStock`
+- **Vấn đề:** Nghiệp vụ trả hàng nhà cung cấp (`SupplierReturnService`) trừ kho theo `WarehouseStocks` nhưng có thể không đồng bộ `CurrentStock` nếu không kiểm soát chặt chẽ.
+- **Trạng thái:** **Chỉ ghi nhận**. Cần rà soát khi hoàn thiện module trả hàng nhà cung cấp.
 
 ### Q28: Lệch bất biến Q14 khi bán hàng rồi nhập kho tiếp theo
 - **Vấn đề:** Bán hàng không trừ `WarehouseStock` khiến tổng tồn kho các kho khác `CurrentStock`, gây ngoại lệ `BusinessRuleException` khi chốt phiếu nhập kho kế tiếp.
-- **Trạng thái:** **Đã sửa**. Đã khắc phục tại B26 (`OrderService`), kiểm thử bằng test hồi quy `Q28_SellThenStockIn_Success_NoInvariantException`.
+- **Trạng thái:** **Đã sửa**. Đã khắc phục tại `OrderService` (`pos-api/src/PosApi/Services/OrderService.cs:62`, `923`), kiểm thử bằng test hồi quy `Q28_SellThenStockIn_Success_NoInvariantException` (`pos-api/tests/PosApi.Tests/OrderServiceTests.cs:816`).
 
 ### Q29: Xử lý dữ liệu đã bán trước bản sửa
 - **Vấn đề:** Dữ liệu đã bán trước bản sửa đang có `CurrentStock < SUM(WarehouseStocks)` (hoặc ngược lại); cần quyết định cách sửa dữ liệu cũ, vì `ReconcileAsync` (Q14) chỉ xử lý `diff > 0` (`CurrentStock > SUM(WarehouseStocks)`) và không được gọi tự động từ mã ứng dụng.

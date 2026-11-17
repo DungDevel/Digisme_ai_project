@@ -13,8 +13,19 @@ public class ReturnServiceTests
 {
     private readonly DatabaseFixture _fixture = new();
 
+    private async Task EnsureWarehouseAsync(AppDbContext context)
+    {
+        if (!await context.Warehouses.AnyAsync())
+        {
+            context.Warehouses.Add(new Warehouse { Code = "WH-DEFAULT", Name = "Kho mặc định", IsDefault = true, IsActive = true });
+            await context.SaveChangesAsync();
+        }
+    }
+
     private async Task<(int userId, Product product)> SeedUserAndProduct(AppDbContext context, decimal stock = 100m, decimal price = 10000m)
     {
+        await EnsureWarehouseAsync(context);
+        var wh = await context.Warehouses.FirstAsync(w => w.IsDefault && w.IsActive);
         var category = new Category { Name = "Cat " + Guid.NewGuid(), IsActive = true };
         context.Categories.Add(category);
         await context.SaveChangesAsync();
@@ -29,6 +40,28 @@ public class ReturnServiceTests
             IsActive = true
         };
         context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        if (stock > 0)
+        {
+            var existingStock = await context.WarehouseStocks
+                .FirstOrDefaultAsync(ws => ws.WarehouseId == wh.Id && ws.ProductId == product.Id);
+            if (existingStock == null)
+            {
+                context.WarehouseStocks.Add(new WarehouseStock
+                {
+                    WarehouseId = wh.Id,
+                    ProductId = product.Id,
+                    Stock = stock
+                });
+                await context.SaveChangesAsync();
+            }
+            else
+            {
+                existingStock.Stock = stock;
+                await context.SaveChangesAsync();
+            }
+        }
 
         var uniqueId = Guid.NewGuid().ToString().Substring(0, 8);
         var cashier = new User
@@ -47,6 +80,8 @@ public class ReturnServiceTests
 
     private async Task SeedOrderData(AppDbContext context)
     {
+        await EnsureWarehouseAsync(context);
+        var wh = await context.Warehouses.FirstAsync(w => w.IsDefault && w.IsActive);
         var category = new Category { Name = "Test Cat " + Guid.NewGuid(), IsActive = true };
         context.Categories.Add(category);
         await context.SaveChangesAsync();
@@ -61,6 +96,14 @@ public class ReturnServiceTests
             IsActive = true
         };
         context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        context.WarehouseStocks.Add(new WarehouseStock
+        {
+            WarehouseId = wh.Id,
+            ProductId = product.Id,
+            Stock = 50m
+        });
         await context.SaveChangesAsync();
 
         var uniqueId = Guid.NewGuid().ToString().Substring(0, 8);
@@ -1083,7 +1126,8 @@ public class ReturnServiceTests
         await context.SaveChangesAsync();
 
         var (cashierId, product) = await SeedUserAndProduct(context, 50m);
-        context.WarehouseStocks.Add(new WarehouseStock { WarehouseId = wh.Id, ProductId = product.Id, Stock = 50m });
+        var whStockRecord = await context.WarehouseStocks.FirstAsync(s => s.ProductId == product.Id);
+        whStockRecord.WarehouseId = wh.Id;
         await context.SaveChangesAsync();
 
         var order = new Order

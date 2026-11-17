@@ -16,6 +16,8 @@ public class OrderServiceTests
 
     private async Task<(int userId, Product product)> SeedUserAndProduct(AppDbContext context, decimal initialStock = 100m, decimal retailPrice = 10000m)
     {
+        await EnsureWarehouseAsync(context);
+        var wh = await context.Warehouses.FirstAsync(w => w.IsDefault && w.IsActive);
         var category = new Category { Name = "Test Category " + Guid.NewGuid(), IsActive = true };
         context.Categories.Add(category);
         await context.SaveChangesAsync();
@@ -32,6 +34,28 @@ public class OrderServiceTests
             MinStock = 5
         };
         context.Products.Add(product);
+        await context.SaveChangesAsync();
+
+        if (initialStock > 0)
+        {
+            var existingStock = await context.WarehouseStocks
+                .FirstOrDefaultAsync(ws => ws.WarehouseId == wh.Id && ws.ProductId == product.Id);
+            if (existingStock == null)
+            {
+                context.WarehouseStocks.Add(new WarehouseStock
+                {
+                    WarehouseId = wh.Id,
+                    ProductId = product.Id,
+                    Stock = initialStock
+                });
+                await context.SaveChangesAsync();
+            }
+            else
+            {
+                existingStock.Stock = initialStock;
+                await context.SaveChangesAsync();
+            }
+        }
 
         var uniqueId = Guid.NewGuid().ToString().Substring(0, 8);
         var user = new User
@@ -229,6 +253,115 @@ public class OrderServiceTests
         Assert.Empty(result.DebtPayments);
         Assert.Equal("instore", result.DeliveryMethod);
         Assert.Equal(0m, result.ShippingFee);
+
+        await tx.RollbackAsync();
+    }
+
+    private async Task EnsureWarehouseAsync(AppDbContext context)
+    {
+        if (!await context.Warehouses.AnyAsync())
+        {
+            context.Warehouses.Add(new Warehouse { Code = "WH-DEFAULT", Name = "Kho mặc định", IsDefault = true, IsActive = true });
+            await context.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Q28_SellThenStockIn_Success_NoInvariantException()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var warehouse = await context.Warehouses.FirstAsync();
+
+        var (userId, product) = await SeedUserAndProduct(context, 0m);
+
+        // 1. Stock In 10 units
+        var stockInService = new StockInService(context, new Mock<ILogger<StockInService>>().Object);
+        var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = userId };
+        context.SupplierInvoices.Add(invoice);
+        await context.SaveChangesAsync();
+        await InventoryReconciler.ReconcileAsync(context);
+
+        var confirmReq = new ConfirmStockInRequest(
+            invoice.Id,
+            new List<StockInItemRequest> { new(product.Id, 10, 1000m) },
+            "Supplier Q28",
+            "Note",
+            null,
+            PaidAmount: 10000m
+        );
+        await stockInService.ConfirmStockInAsync(userId, confirmReq, Guid.NewGuid().ToString());
+
+        // 2. Sell 3 units via OrderService
+        var orderReq = new CreateOrderRequest(
+            CustomerId: null,
+            PaymentMethod: "Cash",
+            PaidAmount: 50000m,
+            Discount: 0m,
+            Surcharges: new List<OrderSurchargeRequest>(),
+            Items: new List<OrderItemRequest> { new(product.Id, null, 3, 1000m) }
+        );
+        var orderService = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var orderRes = await orderService.CreateOrderAsync(userId, orderReq, null);
+
+        // 3. Confirm a second stock in -> should succeed because warehouse stock was correctly reduced
+        var invoice2 = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = userId };
+        context.SupplierInvoices.Add(invoice2);
+        await context.SaveChangesAsync();
+
+        var confirmReq2 = new ConfirmStockInRequest(
+            invoice2.Id,
+            new List<StockInItemRequest> { new(product.Id, 5, 1000m) },
+            "Supplier Q28 2",
+            "Note",
+            null,
+            PaidAmount: 5000m
+        );
+
+        var res2 = await stockInService.ConfirmStockInAsync(userId, confirmReq2, Guid.NewGuid().ToString());
+        Assert.NotNull(res2);
+
+        // Invariant check: CurrentStock == SUM(WarehouseStock.Stock)
+        var productAfter = await context.Products.FindAsync(product.Id);
+        var totalWhStock = await context.WarehouseStocks
+            .Where(ws => ws.ProductId == product.Id)
+            .SumAsync(ws => (decimal?)ws.Stock) ?? 0m;
+        Assert.Equal(productAfter!.CurrentStock, totalWhStock);
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CancelOrderAsync_RefundsWarehouseStockAndCurrentStock()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var warehouse = await context.Warehouses.FirstAsync();
+
+        var (userId, product) = await SeedUserAndProduct(context, 10m);
+
+        var req = new CreateOrderRequest(
+            CustomerId: null,
+            PaymentMethod: "VietQr",
+            PaidAmount: 0m,
+            Discount: 0m,
+            Surcharges: new List<OrderSurchargeRequest>(),
+            Items: new List<OrderItemRequest> { new(product.Id, null, 4, 10000m) }
+        );
+        var orderService = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var created = await orderService.CreateOrderAsync(userId, req, null);
+
+        var productMid = await context.Products.FindAsync(product.Id);
+        Assert.Equal(6m, productMid!.CurrentStock);
+        var whMid = await context.WarehouseStocks.FirstAsync(s => s.WarehouseId == warehouse.Id && s.ProductId == product.Id);
+        Assert.Equal(6m, whMid.Stock);
+
+        await orderService.CancelOrderAsync(created.Id, userId, "Customer cancelled");
+
+        var productFinal = await context.Products.FindAsync(product.Id);
+        Assert.Equal(10m, productFinal!.CurrentStock);
+        var whFinal = await context.WarehouseStocks.FirstAsync(s => s.WarehouseId == warehouse.Id && s.ProductId == product.Id);
+        Assert.Equal(10m, whFinal.Stock);
 
         await tx.RollbackAsync();
     }
@@ -517,6 +650,8 @@ public class OrderServiceTests
     public async Task SumLineDiscount_EqualsOrderDiscount()
     {
         var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var wh = await context.Warehouses.FirstAsync(w => w.IsDefault && w.IsActive);
         var category = new Category { Name = "Cat " + Guid.NewGuid(), IsActive = true };
         context.Categories.Add(category);
         await context.SaveChangesAsync();
@@ -524,6 +659,13 @@ public class OrderServiceTests
         var p1 = new Product { Name = "P1", Barcode = "P1-" + Guid.NewGuid().ToString().Substring(0, 6), CategoryId = category.Id, RetailPrice = 12345.67m, CurrentStock = 10m, IsActive = true };
         var p2 = new Product { Name = "P2", Barcode = "P2-" + Guid.NewGuid().ToString().Substring(0, 6), CategoryId = category.Id, RetailPrice = 23456.78m, CurrentStock = 10m, IsActive = true };
         context.Products.AddRange(p1, p2);
+        await context.SaveChangesAsync();
+
+        context.WarehouseStocks.AddRange(
+            new WarehouseStock { WarehouseId = wh.Id, ProductId = p1.Id, Stock = 10m },
+            new WarehouseStock { WarehouseId = wh.Id, ProductId = p2.Id, Stock = 10m }
+        );
+        await context.SaveChangesAsync();
 
         var cust = new Customer { Name = "VIP Cust", Phone = "09" + Guid.NewGuid().ToString().Substring(0, 8), IsVip = true, IsActive = true };
         context.Customers.Add(cust);
@@ -622,4 +764,160 @@ public class OrderServiceTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() => service.GetOrderByIdAsync(999999));
         await tx.RollbackAsync();
     }
+
+    [Fact]
+    public async Task CreateOrderAsync_NoActiveWarehouse_ThrowsBusinessRuleException()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var (userId, product) = await SeedUserAndProduct(context, 10m);
+        var whs = await context.Warehouses.ToListAsync();
+        foreach (var w in whs) { w.IsActive = false; }
+        await context.SaveChangesAsync();
+
+        var req = new CreateOrderRequest(
+            CustomerId: null, PaymentMethod: "Cash", PaidAmount: 50000m, Discount: 0m,
+            Surcharges: new(), Items: new List<OrderItemRequest> { new(product.Id, null, 1m, null) }
+        );
+        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+
+        await Assert.ThrowsAsync<BusinessRuleException>(async () =>
+        {
+            await service.CreateOrderAsync(userId, req, null);
+        });
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CreateOrderAsync_MissingWarehouseStock_ThrowsStockShortageException()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var warehouse = await context.Warehouses.FirstAsync();
+
+        var (userId, product) = await SeedUserAndProduct(context, 10m);
+        var whs = await context.WarehouseStocks.Where(s => s.ProductId == product.Id).ToListAsync();
+        context.WarehouseStocks.RemoveRange(whs);
+        await context.SaveChangesAsync();
+
+        var req = new CreateOrderRequest(
+            CustomerId: null, PaymentMethod: "Cash", PaidAmount: 50000m, Discount: 0m,
+            Surcharges: new(), Items: new List<OrderItemRequest> { new(product.Id, null, 2m, null) }
+        );
+        var service = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+
+        await Assert.ThrowsAsync<StockShortageException>(async () =>
+        {
+            await service.CreateOrderAsync(userId, req, null);
+        });
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CancelOrderAsync_OldOrderWithoutWarehouseId_RefundsCurrentStockOnlyWithWarning()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var warehouse = await context.Warehouses.FirstAsync();
+
+        var (userId, product) = await SeedUserAndProduct(context, 10m);
+
+        var req = new CreateOrderRequest(
+            CustomerId: null, PaymentMethod: "VietQr", PaidAmount: 0m, Discount: 0m,
+            Surcharges: new(), Items: new List<OrderItemRequest> { new(product.Id, null, 3m, 10000m) }
+        );
+        var orderService = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var created = await orderService.CreateOrderAsync(userId, req, null);
+
+        var ledgerEntry = await context.StockLedger.FirstAsync(l => l.RefId == created.Code && l.ProductId == product.Id);
+        ledgerEntry.WarehouseId = null;
+        await context.SaveChangesAsync();
+
+        await orderService.CancelOrderAsync(created.Id, userId, "Cancel old order");
+
+        var productFinal = await context.Products.FindAsync(product.Id);
+        Assert.Equal(10m, productFinal!.CurrentStock);
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CancelOrderAsync_Twice_ThrowsException()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var (userId, product) = await SeedUserAndProduct(context, 10m);
+
+        var req = new CreateOrderRequest(
+            CustomerId: null, PaymentMethod: "VietQr", PaidAmount: 0m, Discount: 0m,
+            Surcharges: new(), Items: new List<OrderItemRequest> { new(product.Id, null, 2m, 10000m) }
+        );
+        var orderService = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var created = await orderService.CreateOrderAsync(userId, req, null);
+
+        await orderService.CancelOrderAsync(created.Id, userId, "First cancel");
+
+        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            orderService.CancelOrderAsync(created.Id, userId, "Second cancel"));
+
+        await tx.RollbackAsync();
+    }
+
+    [Fact]
+    public async Task CancelOrderAsync_BOMOrder_RefundsFinishedGoodAndIngredients()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        await EnsureWarehouseAsync(context);
+        var warehouse = await context.Warehouses.FirstAsync();
+
+        var cashier = new User { Username = "cashier_bom", FullName = "Cashier BOM", Role = UserRole.Cashier };
+        context.Users.Add(cashier);
+        await context.SaveChangesAsync();
+
+        var cat = new Category { Name = "FnB" };
+        context.Categories.Add(cat);
+        await context.SaveChangesAsync();
+
+        var finished = new Product { Name = "Coffee", CategoryId = cat.Id, Barcode = "CF01", RetailPrice = 30000m, CurrentStock = 50m };
+        var ingredient = new Product { Name = "Coffee Bean", CategoryId = cat.Id, Barcode = "BEAN01", CostPrice = 5000m, CurrentStock = 500m };
+        context.Products.AddRange(finished, ingredient);
+        await context.SaveChangesAsync();
+
+        context.WarehouseStocks.AddRange(
+            new WarehouseStock { WarehouseId = warehouse.Id, ProductId = finished.Id, Stock = 50m },
+            new WarehouseStock { WarehouseId = warehouse.Id, ProductId = ingredient.Id, Stock = 500m }
+        );
+        context.ProductRecipes.Add(new ProductRecipe { ProductId = finished.Id, IngredientId = ingredient.Id, Qty = 20m });
+        await context.SaveChangesAsync();
+
+        var orderService = new OrderService(context, new Mock<ILogger<OrderService>>().Object);
+        var req = new CreateOrderRequest(
+            CustomerId: null, PaymentMethod: "VietQr", PaidAmount: 0m, Discount: 0m,
+            Surcharges: new(), Items: new List<OrderItemRequest> { new(finished.Id, null, 2m, 30000m) }
+        );
+
+        var created = await orderService.CreateOrderAsync(cashier.Id, req, "IDEMP-TEST-BOM");
+
+        var fMid = await context.Products.FindAsync(finished.Id);
+        var iMid = await context.Products.FindAsync(ingredient.Id);
+        Assert.Equal(48m, fMid!.CurrentStock);
+        Assert.Equal(460m, iMid!.CurrentStock);
+
+        await orderService.CancelOrderAsync(created.Id, cashier.Id, "Cancel BOM order");
+
+        var fFinal = await context.Products.FindAsync(finished.Id);
+        var iFinal = await context.Products.FindAsync(ingredient.Id);
+        Assert.Equal(50m, fFinal!.CurrentStock);
+        Assert.Equal(500m, iFinal!.CurrentStock);
+
+        var whFinished = await context.WarehouseStocks.FirstAsync(s => s.WarehouseId == warehouse.Id && s.ProductId == finished.Id);
+        var whIngredient = await context.WarehouseStocks.FirstAsync(s => s.WarehouseId == warehouse.Id && s.ProductId == ingredient.Id);
+        Assert.Equal(50m, whFinished.Stock);
+        Assert.Equal(500m, whIngredient.Stock);
+
+        await tx.RollbackAsync();
+    }
+
+    // [Fact]
+    // public async Task CreateOrderAsync_ConcurrentSales_ExceedingStock_OnlyOneSucceeds() — chưa làm (môi trường xUnit chia sẻ connection pool).
+    // {
+    // }
 }

@@ -381,12 +381,47 @@ public class OrderService : IOrderService
                 .ToListAsync();
             var recipeDict = recipes.GroupBy(r => r.ProductId).ToDictionary(g => g.Key, g => g.ToList());
 
+            // ── Lấy kho mặc định ──
+            var defaultWarehouse = await _db.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
+                                   ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive)
+                                   ?? throw new BusinessRuleException("Không tìm thấy kho hoạt động nào để xuất bán hàng.");
+            int defaultWarehouseId = defaultWarehouse.Id;
+
+            var allNeededProductIds = new HashSet<int>(productIds);
+            foreach (var pId in productIds)
+            {
+                if (recipeDict.TryGetValue(pId, out var recipesList))
+                {
+                    foreach (var r in recipesList) allNeededProductIds.Add(r.IngredientId);
+                }
+            }
+            var neededIdsList = allNeededProductIds.OrderBy(id => id).ToList();
+
+            using (var whStockLockCmd = conn.CreateCommand() as NpgsqlCommand)
+            {
+                whStockLockCmd!.CommandText = "SELECT \"Id\" FROM \"WarehouseStocks\" WHERE \"WarehouseId\" = @whId AND \"ProductId\" = ANY(@ids) ORDER BY \"Id\" FOR UPDATE";
+                if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx2)
+                    whStockLockCmd.Transaction = npgTx2;
+                whStockLockCmd.Parameters.Add(new NpgsqlParameter("@whId", defaultWarehouseId));
+                whStockLockCmd.Parameters.Add(new NpgsqlParameter("@ids", neededIdsList));
+                await whStockLockCmd.ExecuteNonQueryAsync();
+            }
+
+            var warehouseStocks = await _db.WarehouseStocks
+                .Where(s => s.WarehouseId == defaultWarehouseId && neededIdsList.Contains(s.ProductId))
+                .ToListAsync();
+
             // ── Trừ kho + ledger entries (bao gồm BOM nguyên liệu) ──
             var stockWarnings = new List<string>();
             var bomLedgerEntries = new List<StockLedgerEntry>();
 
             foreach (var line in lines)
             {
+                var whStock = warehouseStocks.FirstOrDefault(s => s.ProductId == line.Product.Id);
+                if (whStock == null || whStock.Stock < line.Qty)
+                    throw new StockShortageException(
+                        $"Không đủ tồn kho tại kho '{defaultWarehouse.Name}' cho sản phẩm '{line.Product.Name}': còn {whStock?.Stock ?? 0}, cần {line.Qty}");
+
                 if (line.Qty > line.Product.CurrentStock)
                     throw new StockShortageException(
                         $"Không đủ tồn kho '{line.Product.Name}': còn {line.Product.CurrentStock:0.###}, cần {line.Qty:0.###}");
@@ -395,7 +430,9 @@ public class OrderService : IOrderService
                 if (line.Product.CurrentStock - line.Qty <= line.Product.MinStock && !stockWarnings.Contains(line.Product.Name))
                     stockWarnings.Add($"{line.Product.Name} còn {Round3(line.Product.CurrentStock - line.Qty):0.###}");
 
-                // Cập nhật tồn kho thành phẩm
+                // Cập nhật tồn kho kho và tổng
+                whStock.Stock = Round3(whStock.Stock - line.Qty);
+                whStock.UpdatedAt = DateTime.UtcNow;
                 line.Product.CurrentStock = Round3(line.Product.CurrentStock - line.Qty);
 
                 // Trừ kho nguyên liệu theo BOM nếu có
@@ -405,17 +442,25 @@ public class OrderService : IOrderService
                     {
                         var ing = recipe.Ingredient;
                         var requiredIngQty = Round3(recipe.Qty * line.Qty);
+                        var ingStock = warehouseStocks.FirstOrDefault(s => s.ProductId == ing.Id);
+                        if (ingStock == null || ingStock.Stock < requiredIngQty)
+                            throw new StockShortageException(
+                                $"Không đủ tồn kho nguyên liệu '{ing.Name}' (BOM của '{line.Product.Name}') tại kho '{defaultWarehouse.Name}': còn {ingStock?.Stock ?? 0}, cần {requiredIngQty}");
+
                         if (requiredIngQty > ing.CurrentStock)
                             throw new StockShortageException(
                                 $"Không đủ tồn kho nguyên liệu '{ing.Name}' (BOM của '{line.Product.Name}'): còn {ing.CurrentStock:0.###}, cần {requiredIngQty:0.###}");
 
+                        ingStock.Stock = Round3(ingStock.Stock - requiredIngQty);
+                        ingStock.UpdatedAt = DateTime.UtcNow;
                         ing.CurrentStock = Round3(ing.CurrentStock - requiredIngQty);
 
                         bomLedgerEntries.Add(new StockLedgerEntry
                         {
                             ProductId = ing.Id,
+                            WarehouseId = defaultWarehouseId,
                             Qty = -requiredIngQty,
-                            Balance = ing.CurrentStock,
+                            Balance = ingStock.Stock,
                             RefType = LedgerRefType.Sale,
                             RefId = code,
                             Note = $"Tiêu hao định lượng BOM cho {line.Product.Name}"
@@ -509,8 +554,9 @@ public class OrderService : IOrderService
             ledgerEntries.AddRange(lines.Select(l => new StockLedgerEntry
             {
                 ProductId = l.Product.Id,
+                WarehouseId = defaultWarehouseId,
                 Qty = -l.Qty,
-                Balance = l.Product.CurrentStock,
+                Balance = warehouseStocks.First(s => s.ProductId == l.Product.Id).Stock,
                 RefType = LedgerRefType.Sale,
                 RefId = code,
                 Note = "Bán tại quầy"
@@ -876,24 +922,155 @@ public class OrderService : IOrderService
 
     public async Task CancelOrderAsync(int id, int userId, string reason)
     {
-        var order = await _db.Orders
-            .Include(o => o.Items)
-            .FirstOrDefaultAsync(o => o.Id == id);
-
-        if (order == null) throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{id}");
-        if (order.Status == OrderStatus.Completed)
-            throw new BusinessRuleException("Không thể hủy đơn hàng đã hoàn tất.");
-
-        // Hoàn trả kho
-        foreach (var item in order.Items)
+        var strategy = _db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            var p = await _db.Products.FindAsync(item.ProductId);
-            if (p != null) p.CurrentStock += item.Qty;
-        }
+            var existingTx = _db.Database.CurrentTransaction;
+            await using var tx = existingTx == null ? await _db.Database.BeginTransactionAsync() : null;
+            try
+            {
+                var conn = _db.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    await conn.OpenAsync();
 
-        order.Status = OrderStatus.Cancelled;
-        PosLogService.Write(_db, "ORDER_CANCELLED", userId, "order", order.Code, new { reason });
-        await _db.SaveChangesAsync();
+                using (var orderLockCmd = conn.CreateCommand() as NpgsqlCommand)
+                {
+                    orderLockCmd!.CommandText = "SELECT \"Id\", \"Status\" FROM \"Orders\" WHERE \"Id\" = @id FOR UPDATE";
+                    if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx0)
+                        orderLockCmd.Transaction = npgTx0;
+                    orderLockCmd.Parameters.Add(new NpgsqlParameter("@id", id));
+                    await orderLockCmd.ExecuteNonQueryAsync();
+                }
+
+                var order = await _db.Orders
+                    .Include(o => o.Items)
+                    .FirstOrDefaultAsync(o => o.Id == id);
+
+                if (order == null) throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{id}");
+                if (order.Status == OrderStatus.Completed)
+                    throw new BusinessRuleException("Không thể hủy đơn hàng đã hoàn tất.");
+                if (order.Status == OrderStatus.Cancelled)
+                    throw new BusinessRuleException("Đơn hàng đã bị hủy trước đó.");
+
+                var defaultWarehouse = await _db.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
+                                       ?? await _db.Warehouses.FirstOrDefaultAsync(w => w.IsActive)
+                                       ?? throw new BusinessRuleException("Không tìm thấy kho hoạt động nào để hủy đơn.");
+                int defaultWarehouseId = defaultWarehouse.Id;
+
+                var ledgerEntries = await _db.StockLedger
+                    .Where(l => l.RefId == order.Code && l.RefType == LedgerRefType.Sale)
+                    .ToListAsync();
+
+                var whStockKeys = new List<(int WhId, int ProductId)>();
+                foreach (var item in order.Items)
+                {
+                    var ledgerEntry = ledgerEntries.FirstOrDefault(l => l.ProductId == item.ProductId);
+                    int whId = ledgerEntry?.WarehouseId ?? defaultWarehouseId;
+                    whStockKeys.Add((whId, item.ProductId));
+                }
+
+                var bomEntries = ledgerEntries.Where(l => l.Note != null && l.Note.Contains("Tiêu hao định lượng BOM")).ToList();
+                foreach (var bomEntry in bomEntries)
+                {
+                    int whId = bomEntry.WarehouseId ?? defaultWarehouseId;
+                    whStockKeys.Add((whId, bomEntry.ProductId));
+                }
+
+                var distinctPairs = whStockKeys.Distinct().ToList();
+                var whIds = distinctPairs.Select(p => p.WhId).Distinct().ToList();
+
+                foreach (var whId in whIds)
+                {
+                    var pIds = distinctPairs.Where(p => p.WhId == whId).Select(p => p.ProductId).Distinct().OrderBy(pid => pid).ToList();
+                    using (var whStockLockCmd = conn.CreateCommand() as NpgsqlCommand)
+                    {
+                        whStockLockCmd!.CommandText = "SELECT \"Id\" FROM \"WarehouseStocks\" WHERE \"WarehouseId\" = @whId AND \"ProductId\" = ANY(@ids) ORDER BY \"Id\" FOR UPDATE";
+                        if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
+                            whStockLockCmd.Transaction = npgTx;
+                        whStockLockCmd.Parameters.Add(new NpgsqlParameter("@whId", whId));
+                        whStockLockCmd.Parameters.Add(new NpgsqlParameter("@ids", pIds));
+                        await whStockLockCmd.ExecuteNonQueryAsync();
+                    }
+                }
+
+                var productIdsToLoad = distinctPairs.Select(p => p.ProductId).Distinct().ToList();
+                var products = await _db.Products.Where(p => productIdsToLoad.Contains(p.Id)).ToListAsync();
+                var warehouseStocks = await _db.WarehouseStocks
+                    .Where(s => whIds.Contains(s.WarehouseId) && productIdsToLoad.Contains(s.ProductId))
+                    .ToListAsync();
+
+                var refundEntries = new List<StockLedgerEntry>();
+                foreach (var item in order.Items)
+                {
+                    var p = products.FirstOrDefault(x => x.Id == item.ProductId);
+                    if (p != null) p.CurrentStock = Round3(p.CurrentStock + item.Qty);
+
+                    var ledgerEntry = ledgerEntries.FirstOrDefault(l => l.ProductId == item.ProductId);
+                    if (ledgerEntry?.WarehouseId is int whId)
+                    {
+                        var whStock = warehouseStocks.FirstOrDefault(s => s.WarehouseId == whId && s.ProductId == item.ProductId);
+                        if (whStock != null)
+                        {
+                            whStock.Stock = Round3(whStock.Stock + item.Qty);
+                            whStock.UpdatedAt = DateTime.UtcNow;
+
+                            refundEntries.Add(new StockLedgerEntry
+                            {
+                                ProductId = item.ProductId,
+                                WarehouseId = whId,
+                                Qty = item.Qty,
+                                Balance = whStock.Stock,
+                                RefType = LedgerRefType.Adjustment,
+                                RefId = order.Code,
+                                Note = "Hoàn kho hủy đơn"
+                            });
+                        }
+                    }
+                    else
+                    {
+                        PosLogService.Write(_db, "ORDER_CANCEL_NO_WAREHOUSE_ID", userId, "order", order.Code, new { item.ProductId });
+                        _log.LogWarning("CancelOrderAsync: Ledger entry for product {ProductId} in order {Code} has no WarehouseId. Only CurrentStock refunded.", item.ProductId, order.Code);
+                    }
+                }
+
+                foreach (var bomEntry in bomEntries)
+                {
+                    var p = products.FirstOrDefault(x => x.Id == bomEntry.ProductId);
+                    if (p != null) p.CurrentStock = Round3(p.CurrentStock - bomEntry.Qty); // bomEntry.Qty is negative
+
+                    int whId = bomEntry.WarehouseId ?? defaultWarehouseId;
+                    var whStock = warehouseStocks.FirstOrDefault(s => s.WarehouseId == whId && s.ProductId == bomEntry.ProductId);
+                    if (whStock != null)
+                    {
+                        whStock.Stock = Round3(whStock.Stock - bomEntry.Qty);
+                        whStock.UpdatedAt = DateTime.UtcNow;
+                    }
+
+                    refundEntries.Add(new StockLedgerEntry
+                    {
+                        ProductId = bomEntry.ProductId,
+                        WarehouseId = whId,
+                        Qty = -bomEntry.Qty,
+                        Balance = whStock?.Stock ?? p?.CurrentStock ?? 0m,
+                        RefType = LedgerRefType.Adjustment,
+                        RefId = order.Code,
+                        Note = "Hoàn kho nguyên liệu BOM hủy đơn"
+                    });
+                }
+
+                _db.StockLedger.AddRange(refundEntries);
+                order.Status = OrderStatus.Cancelled;
+                PosLogService.Write(_db, "ORDER_CANCELLED", userId, "order", order.Code, new { reason });
+                await _db.SaveChangesAsync();
+
+                if (tx != null) await tx.CommitAsync();
+            }
+            catch
+            {
+                if (tx != null) await tx.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     public async Task<OrderImageResponse> AddOrderImageAsync(int orderId, int userId, OrderImageUploadRequest req)

@@ -181,7 +181,7 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | **Kiểm kê (StockTakes) duyệt (Confirm)** (StockTakesController) | Không (Chỉ ghi WarehouseStocks) | Có | Có (Có WarehouseId) | Không (Transaction ngầm) | Không | StockTakeService.cs:126-176 |
 | **Chuyển kho nội bộ** (WarehouseTransfersController) | Không | Có (Trừ kho đi, cộng kho đến) | Có (Có WarehouseId) | Có | Có | WarehouseTransferService.cs:140-190 |
 | **Sản xuất / BOM (Recipes)** | Không | Không | Không | Không | Không | RecipesController.cs |
-| **InventoryReconciler.ReconcileAsync** | Không (Chỉ log/tạo issue) | Không | Không | Không | Không | InventoryReconciler.cs:30-90 |
+| **InventoryReconciler.ReconcileAsync** | Không | Có (chỉ khi diff > 0, cộng vào kho mặc định) | Có | Không | Có | InventoryReconciler.cs:32-82 |
 
 ---
 
@@ -216,7 +216,7 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 
 ## 7. Service / Hàm Public Không Được Gọi Từ Controller
 - `InventoryReconciler.ReconcileAsync` (`pos-api/src/PosApi/Services/InventoryReconciler.cs:12`).
-  - **Bằng chứng:** Không có Controller nào gọi trực tiếp; chỉ được gọi từ migration SQL / integration tests (`B1EvidenceTests.cs`, `StockInServiceTests.cs`, v.v.).
+  - **Bằng chứng:** Không có lời gọi nào trong `src`; chỉ được gọi từ test (`B1EvidenceTests.cs`, `StockInServiceTests.cs`, `OrderServiceTests.cs`, `SupplierDebtFeatureTests.cs`). Migration `AddQ14ReconciliationAndQ13Cost` thực hiện việc tương tự bằng SQL riêng, không gọi hàm này.
 
 ---
 

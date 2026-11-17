@@ -12,6 +12,15 @@ public class BOMOrderTests
 {
     private readonly DatabaseFixture _fixture = new();
 
+    private async Task EnsureWarehouseAsync(AppDbContext context)
+    {
+        if (!await context.Warehouses.AnyAsync())
+        {
+            context.Warehouses.Add(new Warehouse { Code = "WH-DEFAULT", Name = "Kho mặc định", IsDefault = true, IsActive = true });
+            await context.SaveChangesAsync();
+        }
+    }
+
     [Fact]
     public async Task CreateOrder_WithBOMRecipe_DeductsIngredientStock_Success()
     {
@@ -19,6 +28,7 @@ public class BOMOrderTests
         using (context)
         using (tx)
         {
+            await EnsureWarehouseAsync(context);
             var user = new User { Username = "cashier_fnb", FullName = "Nhân viên F&B", Role = UserRole.Cashier };
             context.Users.Add(user);
             await context.SaveChangesAsync();
@@ -32,6 +42,13 @@ public class BOMOrderTests
             // Nguyên liệu
             var ingredient = new Product { Name = "Trà đen", CategoryId = cat.Id, Barcode = "ING_TEA", CostPrice = 20000m, CurrentStock = 1000m }; // 1000g
             context.Products.AddRange(finished, ingredient);
+            await context.SaveChangesAsync();
+
+            var wh = await context.Warehouses.FirstAsync(w => w.IsDefault && w.IsActive);
+            context.WarehouseStocks.AddRange(
+                new WarehouseStock { WarehouseId = wh.Id, ProductId = finished.Id, Stock = 100m },
+                new WarehouseStock { WarehouseId = wh.Id, ProductId = ingredient.Id, Stock = 1000m }
+            );
             await context.SaveChangesAsync();
 
             // Cấu hình BOM: 1 ly trà sữa tốn 50g trà đen

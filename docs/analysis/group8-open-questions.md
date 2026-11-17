@@ -69,15 +69,19 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 - **Phương án đề xuất:** Giữ nguyên hành vi hiện tại (ném ngoại lệ `ConflictException`) nhằm đảm bảo tính toàn vẹn và ngăn chặn client tái sử dụng nhầm khóa cho giao dịch khác. Tài liệu hóa cho đội ngũ frontend/client quy định sinh `Idempotency-Key` mới cho mỗi request nghiệp vụ độc lập.
 
 ### Q26: Bán hàng không trừ tồn kho theo kho (`WarehouseStocks`)
-- **Vấn đề:** `OrderService.CreateOrderAsync` trước đây chỉ trừ `Product.CurrentStock` mà không trừ `WarehouseStock` của kho xuất, dẫn đến lệch bất biến tồn kho Q14 khi nhập kho tiếp theo.
-- **Trạng thái:** **Đã sửa**. `OrderService` đã được bổ sung logic khóa dòng `WarehouseStocks` bằng `FOR UPDATE`, kiểm tra tồn kho tại kho mặc định, trừ `WarehouseStock.Stock`, ghi `StockLedgerEntry` kèm `WarehouseId`, và hoàn kho chính xác trong `CancelOrderAsync`.
+- **Vấn đề:** `OrderService.CreateOrderAsync` (`pos-api/src/PosApi/Services/OrderService.cs:62`) trước đây chỉ trừ `Product.CurrentStock` mà không trừ `WarehouseStock` của kho xuất, dẫn đến lệch bất biến tồn kho Q14 khi nhập kho tiếp theo.
+- **Trạng thái:** **Đã sửa**. `OrderService` (`pos-api/src/PosApi/Services/OrderService.cs:62`, `923`) không tự tạo kho `WH-DEFAULT` hay `WarehouseStock`, thiếu dòng tồn kho tại kho sẽ ném `StockShortageException`. Hủy đơn (`CancelOrderAsync` - `pos-api/src/PosApi/Services/OrderService.cs:923`) khóa dòng `Orders` `FOR UPDATE` (`OrderService.cs:938`) rồi kiểm `Status` (`OrderService.cs:950`); nếu đã hủy thì ném `BusinessRuleException` (`OrderService.cs:952`); hủy đơn cũ không có `WarehouseId` chỉ hoàn `CurrentStock` và ghi `PosLog` `ORDER_CANCEL_NO_WAREHOUSE_ID` (`pos-api/src/PosApi/Services/OrderService.cs:1032`). Lưu ý: chưa kiểm hủy song song (test chạy một luồng).
+
+### Q27: Trả nhà cung cấp trừ `WarehouseStocks` nhưng không trừ `CurrentStock`
+- **Vấn đề:** Nghiệp vụ trả hàng nhà cung cấp (`SupplierReturnService.cs:161-175`) duyệt phiếu trả NCC chỉ trừ `WarehouseStocks`, không trừ `Product.CurrentStock`. Ghi nhận: chưa xem `CancelSupplierReturnAsync`.
+- **Trạng thái:** **Chỉ ghi nhận**, không sửa mã. Cần rà soát khi hoàn thiện module trả hàng nhà cung cấp.
 
 ### Q28: Lệch bất biến Q14 khi bán hàng rồi nhập kho tiếp theo
 - **Vấn đề:** Bán hàng không trừ `WarehouseStock` khiến tổng tồn kho các kho khác `CurrentStock`, gây ngoại lệ `BusinessRuleException` khi chốt phiếu nhập kho kế tiếp.
-- **Trạng thái:** **Đã sửa**. Đã khắc phục tại B26 (`OrderService`), kiểm thử bằng test hồi quy `Q28_SellThenStockIn_Success_NoInvariantException`.
+- **Trạng thái:** **Đã sửa**. Đã khắc phục tại `OrderService` (`pos-api/src/PosApi/Services/OrderService.cs:62`, `923`), kiểm thử bằng test hồi quy `Q28_SellThenStockIn_Success_NoInvariantException` (`pos-api/tests/PosApi.Tests/OrderServiceTests.cs:270`).
 
 ### Q29: Xử lý dữ liệu đã bán trước bản sửa
-- **Vấn đề:** Dữ liệu đã bán trước bản sửa đang có `CurrentStock < SUM(WarehouseStocks)` (hoặc ngược lại); cần quyết định cách sửa dữ liệu cũ, vì `ReconcileAsync` (Q14) chỉ xử lý `diff > 0` (`CurrentStock > SUM(WarehouseStocks)`) và không được gọi tự động từ mã ứng dụng.
+- **Vấn đề:** Dữ liệu có thể bị lệch bất biến Q14 từ hai nguồn rõ ràng: (1) đơn đã bán trước bản sửa (`CurrentStock < SUM(WarehouseStocks)`), và (2) hủy đơn cũ không có `WarehouseId` hoặc hoàn BOM khi không có dòng kho (`CurrentStock > SUM(WarehouseStocks)`). `ReconcileAsync` (Q14) chỉ xử lý `diff > 0` và không được gọi tự động từ mã ứng dụng.
 - **Phương án đề xuất:** (Chỉ ghi nhận) Xây dựng script migration hoặc công cụ quản trị chạy một lần để cân bằng lại `WarehouseStocks` cho các giao dịch lịch sử.
 
 ### Q20: Phân loại phiếu nhập tạo giữa migration B1 và B2 trong tính lại công nợ

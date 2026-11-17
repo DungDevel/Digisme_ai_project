@@ -167,7 +167,7 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 
 | Endpoint | Ghi Product.CurrentStock? | Ghi WarehouseStocks? | Ghi StockLedger (có WarehouseId)? | Có giao dịch? | Có khóa FOR UPDATE? | Bằng chứng (file:dòng) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Tạo/Sửa/Xóa sản phẩm** (ProductsController) | Không (InitialStock = 0) | Không | Không | Không | Không | ProductService.cs:78, ProductService.cs:114 |
+| **Tạo/Sửa/Xóa sản phẩm** (ProductsController) | Không (InitialStock = 0) | Không | Không | Không | Không | ProductService.cs:82-112, ProductService.cs:114 |
 | **Nhập kho (StockIn) tạo/sửa** (StockInsController) | Không | Không | Không | Không | Không | StockInService.cs:80, StockInService.cs:220 |
 | **Nhập kho (StockIn) chốt (Confirm)** (StockInsController) | Có | Có | Có (Có WarehouseId) | Có (ExecutionStrategy + Transaction) | Có (Products + WarehouseStocks) | StockInService.cs:340-480 |
 | **Nhập kho (StockIn) hủy** (StockInsController) | Có | Có | Có (Có WarehouseId) | Có | Có | StockInService.cs:760-820 |

@@ -68,6 +68,10 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 - **Vấn đề:** Khi client sử dụng cùng một `Idempotency-Key` cho hai request chốt phiếu nhập kho với nội dung (payload / items / tổng tiền) khác nhau, hệ thống hiện tại so sánh request hash và ném ngoại lệ `ConflictException` ("Idempotency-Key đã được dùng cho nội dung khác").
 - **Phương án đề xuất:** Giữ nguyên hành vi hiện tại (ném ngoại lệ `ConflictException`) nhằm đảm bảo tính toàn vẹn và ngăn chặn client tái sử dụng nhầm khóa cho giao dịch khác. Tài liệu hóa cho đội ngũ frontend/client quy định sinh `Idempotency-Key` mới cho mỗi request nghiệp vụ độc lập.
 
+### Q18: Tạo hoặc sửa sản phẩm không khởi tạo / cập nhật WarehouseStock
+- **Vấn đề:** `ProductService.cs:82` (`CreateAsync`) và `ProductService.cs:114` (`UpdateAsync`) khi tạo sản phẩm không khởi tạo `WarehouseStock`.
+- **Kết luận & Quyết định đã chốt:** Tồn kho chỉ thay đổi qua phiếu nhập kho (B1), kiểm kê, điều chỉnh, bán, trả. Tạo sản phẩm KHÔNG được nhập tồn (`CurrentStock` mặc định = 0). Các luồng nghiệp vụ (`StockTakeService`, `ReturnService`, `WarehouseTransferService`, v.v.) khi phát sinh giao dịch tồn kho đều tự động tạo dòng `WarehouseStock` nếu thiếu. Do đó không có luồng nào bị hỏng. Q18 là rủi ro tiềm ẩn đã được bổ sung test hồi quy (`ProductService_Create_ZeroStock_MaintainsInvariant`).
+
 ### Q26: Bán hàng không trừ tồn kho theo kho (`WarehouseStocks`)
 - **Vấn đề:** `OrderService.CreateOrderAsync` (`pos-api/src/PosApi/Services/OrderService.cs:62`) trước đây chỉ trừ `Product.CurrentStock` mà không trừ `WarehouseStock` của kho xuất, dẫn đến lệch bất biến tồn kho Q14 khi nhập kho tiếp theo.
 - **Trạng thái:** **Đã sửa**. `OrderService` (`pos-api/src/PosApi/Services/OrderService.cs:62`, `923`) không tự tạo kho `WH-DEFAULT` hay `WarehouseStock`, thiếu dòng tồn kho tại kho sẽ ném `StockShortageException`. Hủy đơn (`CancelOrderAsync` - `pos-api/src/PosApi/Services/OrderService.cs:923`) khóa dòng `Orders` `FOR UPDATE` (`OrderService.cs:938`) rồi kiểm `Status` (`OrderService.cs:950`); nếu đã hủy thì ném `BusinessRuleException` (`OrderService.cs:952`); hủy đơn cũ không có `WarehouseId` chỉ hoàn `CurrentStock` và ghi `PosLog` `ORDER_CANCEL_NO_WAREHOUSE_ID` (`pos-api/src/PosApi/Services/OrderService.cs:1032`). Lưu ý: chưa kiểm hủy song song (test chạy một luồng).
@@ -88,3 +92,7 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 - **Vấn đề thực tế trong mã nguồn:** Các hằng số `B2_MIGRATION_DATE`, `B2_ROLLOUT_DATE`, `IsB2Applied` hoàn toàn không tồn tại trong mã nguồn thực tế. Quy tắc phân biệt "trước B2" chưa được cài đặt. `RecalculateAsync` trong `SupplierDebtService` chỉ so sánh số dư (`recordedBalance` vs `calculatedBalance`) và báo cáo lệch (discrepancy), KHÔNG tạo hoặc sửa công nợ (`SupplierDebts`). Do đó, phiếu cũ thiếu công nợ sẽ chỉ bị báo lệch (discrepancy) chứ không bị tự động sinh nợ sai.
 - **Trạng thái DB & Giả định:** DB dev `digism_pos` hiện có migration B1 nhưng chưa có B2. Lưu ý: nhận định "chưa DB nào áp Q14 bản cũ" và "DB duy nhất là DB dev" là giả định của chủ dự án, không phải điều Claude Code đã xác minh độc lập.
 - **Phương án ghi nhận:** Giữ nguyên hành vi hiện tại của `RecalculateAsync` (chỉ báo lệch, không tự sửa/tạo nợ) để tránh can thiệp ngoài ý muốn.
+
+### Q25: Chứng từ nhập tồn ban đầu khi khởi tạo hệ thống
+- **Vấn đề:** Muốn nhập tồn hiện có khi cửa hàng bắt đầu sử dụng hệ thống thì dùng phiếu nhập kho B1 hay cần chứng từ "tồn đầu kỳ" riêng?
+- **Phương án đề xuất:** (Chỉ ghi nhận) Sử dụng phiếu nhập kho B1 với nhà cung cấp nội bộ hoặc cờ tồn đầu kỳ (`IsBackfilled`), hoặc xây dựng chứng từ kiểm kê/điều chỉnh đầu kỳ chuyên biệt.

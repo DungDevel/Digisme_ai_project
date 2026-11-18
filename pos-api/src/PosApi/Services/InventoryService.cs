@@ -13,6 +13,7 @@ public interface IInventoryService
     Task<StockHistoryResponse> GetProductStockHistoryAsync(int productId);
     Task<PagedInventoryResponse> ListLowStockAsync(int page, int pageSize);
     Task<bool> AdjustStockAsync(int userId, int productId, InventoryAdjustRequest req);
+    Task<InventoryReconcileResponse> ReconcileInventoryAsync(int userId, InventoryReconcileRequest? req);
 }
 
 public class InventoryService : IInventoryService
@@ -243,5 +244,66 @@ public class InventoryService : IInventoryService
 
             return true;
         });
+    }
+
+    public async Task<InventoryReconcileResponse> ReconcileInventoryAsync(int userId, InventoryReconcileRequest? req)
+    {
+        var targetWarehouseId = req?.TargetWarehouseId;
+        var dryRun = req?.DryRun ?? true;
+
+        if (targetWarehouseId.HasValue)
+        {
+            var wh = await _db.Warehouses.AsNoTracking().FirstOrDefaultAsync(w => w.Id == targetWarehouseId.Value);
+            if (wh == null)
+                throw new KeyNotFoundException("Không tìm thấy kho được chỉ định");
+            if (!wh.IsActive)
+                throw new InvalidOperationException("Kho được chỉ định không hoạt động");
+        }
+
+        if (dryRun)
+        {
+            var report = await InventoryReconciler.ComputeDiffsAsync(_db, targetWarehouseId);
+            return new InventoryReconcileResponse(
+                true,
+                report.TargetWarehouseId,
+                report.TargetWarehouseName,
+                report.TotalProductsChecked,
+                report.ProductsWithSurplusCount,
+                report.ProductsWithDeficitCount,
+                report.Details.Select(d => new ReconcileItemDetailDto(d.ProductId, d.Barcode, d.Name, d.CurrentStock, d.TotalWhStock, d.Diff, d.ActionType)).ToList()
+            );
+        }
+        else
+        {
+            var strategy = _db.Database.CreateExecutionStrategy();
+            ReconcileReportResult report = null!;
+            int fixedCount = 0;
+
+            await strategy.ExecuteAsync(async () =>
+            {
+                var existingTx = _db.Database.CurrentTransaction;
+                await using var tx = existingTx == null ? await _db.Database.BeginTransactionAsync() : null;
+
+                report = await InventoryReconciler.ComputeDiffsAsync(_db, targetWarehouseId);
+                await InventoryReconciler.ReconcileAsync(_db, targetWarehouseId);
+
+                fixedCount = report.ProductsWithSurplusCount;
+
+                PosLogService.Write(_db, "INVENTORY_RECONCILE_RUN", userId, "inventory", report.TargetWarehouseId.ToString(), new { report.TargetWarehouseId, report.TargetWarehouseName, fixedCount, report.ProductsWithDeficitCount });
+
+                await _db.SaveChangesAsync();
+                if (tx != null) await tx.CommitAsync();
+            });
+
+            return new InventoryReconcileResponse(
+                false,
+                report.TargetWarehouseId,
+                report.TargetWarehouseName,
+                report.TotalProductsChecked,
+                report.ProductsWithSurplusCount,
+                report.ProductsWithDeficitCount,
+                report.Details.Select(d => new ReconcileItemDetailDto(d.ProductId, d.Barcode, d.Name, d.CurrentStock, d.TotalWhStock, d.Diff, d.ActionType)).ToList()
+            );
+        }
     }
 }

@@ -396,3 +396,8 @@ public record CashFlowReportResponse(
     decimal ClosingBalance,
     List<CashVoucherResponse> Vouchers
 );
+
+public record InventoryReconcileRequest(int? TargetWarehouseId, bool? DryRun);
+public record ReconcileItemDetailDto(int ProductId, string Barcode, string Name, decimal CurrentStock, decimal TotalWhStock, decimal Diff, string ActionType);
+public record InventoryReconcileResponse(bool DryRun, int TargetWarehouseId, string TargetWarehouseName, int TotalProductsChecked, int ProductsWithSurplusCount, int ProductsWithDeficitCount, List<ReconcileItemDetailDto> Details);
+

@@ -168,6 +168,7 @@ public class SupplierReturnService : ISupplierReturnService
 
             stockRecord.Stock -= item.Qty;
             stockRecord.UpdatedAt = DateTime.UtcNow;
+            item.Product.CurrentStock = Round3(item.Product.CurrentStock - item.Qty);
 
             _db.StockLedger.Add(new StockLedgerEntry
             {
@@ -234,4 +235,6 @@ public class SupplierReturnService : ISupplierReturnService
             i.Total
         )).ToList() ?? new()
     );
+
+    private static decimal Round3(decimal val) => Math.Round(val, 3, MidpointRounding.AwayFromZero);
 }

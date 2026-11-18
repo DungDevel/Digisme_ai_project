@@ -9,6 +9,56 @@ public static class InventoryReconciler
 {
     private static decimal Round3(decimal val) => Math.Round(val, 3, MidpointRounding.AwayFromZero);
 
+    public static async Task<ReconcileReportResult> ComputeDiffsAsync(AppDbContext context, int? targetWarehouseId = null)
+    {
+        Warehouse? defaultWarehouse = null;
+        if (targetWarehouseId.HasValue)
+        {
+            defaultWarehouse = await context.Warehouses.FindAsync(targetWarehouseId.Value);
+        }
+
+        defaultWarehouse ??= await context.Warehouses.FirstOrDefaultAsync(w => w.IsDefault && w.IsActive)
+            ?? await context.Warehouses.FirstOrDefaultAsync(w => w.IsActive);
+
+        if (defaultWarehouse == null)
+        {
+            throw new InvalidOperationException("Không tìm thấy kho mặc định hoặc kho hoạt động nào để thực hiện cân bằng tồn kho (Q14). Vui lòng cấu hình ít nhất một kho hoạt động.");
+        }
+
+        var products = await context.Products.AsNoTracking().Where(p => p.IsActive).ToListAsync();
+        var details = new List<ReconcileItemDetail>();
+        int surplusCount = 0;
+        int deficitCount = 0;
+
+        foreach (var p in products)
+        {
+            var totalWhStock = await context.WarehouseStocks
+                .AsNoTracking()
+                .Where(ws => ws.ProductId == p.Id)
+                .SumAsync(ws => (decimal?)ws.Stock) ?? 0m;
+
+            var diff = Round3(p.CurrentStock - totalWhStock);
+            if (diff != 0m)
+            {
+                var actionType = diff > 0m ? "WillAddToDefaultWarehouse" : "ReportOnly";
+                if (diff > 0m) surplusCount++;
+                else deficitCount++;
+
+                details.Add(new ReconcileItemDetail(
+                    p.Id,
+                    p.Barcode,
+                    p.Name,
+                    p.CurrentStock,
+                    totalWhStock,
+                    diff,
+                    actionType
+                ));
+            }
+        }
+
+        return new ReconcileReportResult(defaultWarehouse.Id, defaultWarehouse.Name, products.Count, surplusCount, deficitCount, details);
+    }
+
     public static async Task ReconcileAsync(AppDbContext context, int? targetWarehouseId = null, ILogger? logger = null)
     {
         Warehouse? defaultWarehouse = null;
@@ -82,3 +132,7 @@ public static class InventoryReconciler
         await context.SaveChangesAsync();
     }
 }
+
+public record ReconcileReportResult(int TargetWarehouseId, string TargetWarehouseName, int TotalProductsChecked, int ProductsWithSurplusCount, int ProductsWithDeficitCount, List<ReconcileItemDetail> Details);
+public record ReconcileItemDetail(int ProductId, string Barcode, string Name, decimal CurrentStock, decimal TotalWhStock, decimal Diff, string ActionType);
+

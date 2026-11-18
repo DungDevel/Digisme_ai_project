@@ -86,7 +86,15 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 
 ### Q29: Xử lý dữ liệu đã bán trước bản sửa
 - **Vấn đề:** Dữ liệu có thể bị lệch bất biến Q14 từ hai nguồn rõ ràng: (1) đơn đã bán trước bản sửa (`CurrentStock < SUM(WarehouseStocks)`), và (2) hủy đơn cũ không có `WarehouseId` hoặc hoàn BOM khi không có dòng kho (`CurrentStock > SUM(WarehouseStocks)`). `ReconcileAsync` (Q14) chỉ xử lý `diff > 0` và không được gọi tự động từ mã ứng dụng.
-- **Phương án đề xuất:** (Chỉ ghi nhận) Xây dựng script migration hoặc công cụ quản trị chạy một lần để cân bằng lại `WarehouseStocks` cho các giao dịch lịch sử.
+- **Trạng thái:** **Đã sửa (công cụ quản trị)**. Đã bổ sung endpoint quản trị `POST /api/v1/inventory/reconcile` (`InventoryController.cs`), hỗ trợ `DryRun = true` (mặc định) để tính toán chênh lệch (`ComputeDiffsAsync`) và `DryRun = false` để tự động cân bằng tồn kho (`ReconcileAsync`) đối với sản phẩm thừa (`diff > 0`) vào kho mặc định (hoặc kho chỉ định hợp lệ) kèm ghi `StockLedger` và `PosLog` trong transaction execution strategy.
+- **Lưu ý nghiệp vụ:** 
+  - Trường hợp `diff < 0` (thiếu tồn kho so với warehouse stocks) chỉ thực hiện báo cáo (phương án C), không tự động sửa `CurrentStock` hay `WarehouseStocks`.
+  - Tham số `TargetWarehouseId` nếu được truyền nhưng không tồn tại (`KeyNotFoundException`) hoặc không hoạt động (`InvalidOperationException`) sẽ bị từ chối nghiệp vụ (không thực hiện).
+- **Quan sát kỹ thuật:** 
+  - (1) `ReconcileAsync` cũ không quản lý transaction riêng hay khóa dòng (`FOR UPDATE`).
+  - (2) Bút toán `StockLedger` cân bằng sử dụng `Balance = p.CurrentStock`.
+  - (3) `ComputeDiffsAsync` đọc không khóa dòng, do đó báo cáo có thể lệch nhẹ so với phần ghi nếu phát sinh bán hàng đồng thời; nên chạy công cụ đối soát này ngoài giờ bán.
+- **Kiểm thử:** Đã phủ unit tests tại `InventoryReconcilerTests.cs` (`ComputeDiffs_DryRun_DoesNotModifyDatabase`, `ReconcileApply_Surplus_UpdatesWarehouseStockAndLedger_Idempotent`, `ReconcileApply_Deficit_DoesNotModifyStock`, `ComputeDiffs_IgnoresInactiveProducts`, `ComputeDiffs_NoActiveWarehouse_ThrowsInvalidOperationException`, `ReconcileInventory_NullBody_DefaultsToDryRun`, `Reconcile_NonExistentWarehouse_ThrowsKeyNotFoundException_NothingWritten`, `Reconcile_InactiveWarehouse_ThrowsInvalidOperationException`).
 
 ### Q20: Phân loại phiếu nhập tạo giữa migration B1 và B2 trong tính lại công nợ
 - **Vấn đề thực tế trong mã nguồn:** Các hằng số `B2_MIGRATION_DATE`, `B2_ROLLOUT_DATE`, `IsB2Applied` hoàn toàn không tồn tại trong mã nguồn thực tế. Quy tắc phân biệt "trước B2" chưa được cài đặt. `RecalculateAsync` trong `SupplierDebtService` chỉ so sánh số dư (`recordedBalance` vs `calculatedBalance`) và báo cáo lệch (discrepancy), KHÔNG tạo hoặc sửa công nợ (`SupplierDebts`). Do đó, phiếu cũ thiếu công nợ sẽ chỉ bị báo lệch (discrepancy) chứ không bị tự động sinh nợ sai.

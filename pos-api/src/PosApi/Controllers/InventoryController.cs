@@ -74,4 +74,27 @@ public class InventoryController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    [HttpPost("reconcile")]
+    [Authorize(Policy = "ManagerOnly")]
+    public async Task<IActionResult> Reconcile([FromBody] InventoryReconcileRequest? req)
+    {
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (userIdClaim == null) return Unauthorized();
+        var userId = int.Parse(userIdClaim.Value);
+
+        try
+        {
+            var result = await _inventory.ReconcileInventoryAsync(userId, req);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
 }

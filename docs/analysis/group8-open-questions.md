@@ -77,8 +77,8 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 - **Trạng thái:** **Đã sửa**. `OrderService` (`pos-api/src/PosApi/Services/OrderService.cs:62`, `923`) không tự tạo kho `WH-DEFAULT` hay `WarehouseStock`, thiếu dòng tồn kho tại kho sẽ ném `StockShortageException`. Hủy đơn (`CancelOrderAsync` - `pos-api/src/PosApi/Services/OrderService.cs:923`) khóa dòng `Orders` `FOR UPDATE` (`OrderService.cs:938`) rồi kiểm `Status` (`OrderService.cs:950`); nếu đã hủy thì ném `BusinessRuleException` (`OrderService.cs:952`); hủy đơn cũ không có `WarehouseId` chỉ hoàn `CurrentStock` và ghi `PosLog` `ORDER_CANCEL_NO_WAREHOUSE_ID` (`pos-api/src/PosApi/Services/OrderService.cs:1032`). Lưu ý: chưa kiểm hủy song song (test chạy một luồng).
 
 ### Q27: Trả nhà cung cấp trừ `WarehouseStocks` nhưng không trừ `CurrentStock`
-- **Vấn đề:** Nghiệp vụ trả hàng nhà cung cấp (`SupplierReturnService.cs:161-175`) duyệt phiếu trả NCC chỉ trừ `WarehouseStocks`, không trừ `Product.CurrentStock`. Ghi nhận: chưa xem `CancelSupplierReturnAsync`.
-- **Trạng thái:** **Chỉ ghi nhận**, không sửa mã. Cần rà soát khi hoàn thiện module trả hàng nhà cung cấp.
+- **Vấn đề:** Nghiệp vụ trả hàng nhà cung cấp (`SupplierReturnService.cs:161-175`) duyệt phiếu trả NCC chỉ trừ `WarehouseStocks`, không trừ `Product.CurrentStock`.
+- **Trạng thái:** **Đã sửa**. Đã bổ sung `item.Product.CurrentStock = Round3(item.Product.CurrentStock - item.Qty);` tại `SupplierReturnService.cs:171` trong `ConfirmSupplierReturnAsync`. Kiểm thử bằng test hồi quy `ConfirmSupplierReturn_UpdatesWarehouseStockAndCurrentStock_MaintainsQ14` (`pos-api/tests/PosApi.Tests/SupplierReturnServiceTests.cs`). Cancel chỉ hủy Draft, không đụng kho. Quan sát phụ về đồng thời: chưa kiểm, chưa sửa.
 
 ### Q28: Lệch bất biến Q14 khi bán hàng rồi nhập kho tiếp theo
 - **Vấn đề:** Bán hàng không trừ `WarehouseStock` khiến tổng tồn kho các kho khác `CurrentStock`, gây ngoại lệ `BusinessRuleException` khi chốt phiếu nhập kho kế tiếp.

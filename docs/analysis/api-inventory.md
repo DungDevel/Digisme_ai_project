@@ -132,11 +132,11 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | POST | /api/v1/supplier-debts/{id}/pay | SupplierDebtsController.Pay (SupplierDebtsController.cs:24) | Auth | PaySupplierDebtRequest | SupplierDebtResponse | ISupplierDebtService | Thanh toán công nợ nhà cung cấp |
 | GET | /api/v1/supplier-debts/aging | SupplierDebtsController.Aging (SupplierDebtsController.cs:32) | Auth | None | List<SupplierDebtAgingResponse> | ISupplierDebtService | Tuổi nợ nhà cung cấp |
 | POST | /api/v1/supplier-debts/recalculate | SupplierDebtsController.Recalculate (SupplierDebtsController.cs:40) | Admin | None | void | ISupplierDebtService | Tính lại công nợ nhà cung cấp |
-| GET | /api/v1/supplier-returns | SupplierReturnsController.Get (SupplierReturnsController.cs:16) | Auth | None | List<SupplierReturnResponse> | ISupplierReturnService | Danh sách trả hàng nhà cung cấp |
-| GET | /api/v1/supplier-returns/{id} | SupplierReturnsController.GetById (SupplierReturnsController.cs:24) | Auth | None | SupplierReturnResponse | ISupplierReturnService | Chi tiết trả hàng nhà cung cấp |
-| POST | /api/v1/supplier-returns | SupplierReturnsController.Create (SupplierReturnsController.cs:32) | Auth | UpsertSupplierReturnRequest | SupplierReturnResponse | ISupplierReturnService | Tạo phiếu trả hàng nhà cung cấp |
-| POST | /api/v1/supplier-returns/{id}/confirm | SupplierReturnsController.Confirm (SupplierReturnsController.cs:41) | Auth | None | SupplierReturnResponse | ISupplierReturnService | Xác nhận duyệt trả hàng NCC |
-| POST | /api/v1/supplier-returns/{id}/cancel | SupplierReturnsController.Cancel (SupplierReturnsController.cs:49) | Auth | None | SupplierReturnResponse | ISupplierReturnService | Hủy phiếu trả hàng nhà cung cấp |
+| GET | /api/v1/supplier-returns | SupplierReturnsController.Get (SupplierReturnsController.cs:16) | Mgr/Admin | None | List<SupplierReturnResponse> | ISupplierReturnService | Danh sách trả hàng nhà cung cấp |
+| GET | /api/v1/supplier-returns/{id} | SupplierReturnsController.GetById (SupplierReturnsController.cs:24) | Mgr/Admin | None | SupplierReturnResponse | ISupplierReturnService | Chi tiết trả hàng nhà cung cấp |
+| POST | /api/v1/supplier-returns | SupplierReturnsController.Create (SupplierReturnsController.cs:32) | Mgr/Admin | UpsertSupplierReturnRequest | SupplierReturnResponse | ISupplierReturnService | Tạo phiếu trả hàng nhà cung cấp |
+| POST | /api/v1/supplier-returns/{id}/confirm | SupplierReturnsController.Confirm (SupplierReturnsController.cs:41) | Mgr/Admin | None | SupplierReturnResponse | ISupplierReturnService | Xác nhận duyệt trả hàng NCC |
+| POST | /api/v1/supplier-returns/{id}/cancel | SupplierReturnsController.Cancel (SupplierReturnsController.cs:49) | Mgr/Admin | None | SupplierReturnResponse | ISupplierReturnService | Hủy phiếu trả hàng nhà cung cấp |
 | GET | /api/v1/suppliers | SuppliersController.Get (SuppliersController.cs:20) | Auth | None | List<SupplierResponse> | ISupplierService | Danh sách nhà cung cấp |
 | GET | /api/v1/suppliers/{id} | SuppliersController.GetById (SuppliersController.cs:28) | Auth | None | SupplierResponse | ISupplierService | Chi tiết nhà cung cấp |
 | POST | /api/v1/suppliers | SuppliersController.Create (SuppliersController.cs:36) | Mgr/Admin | UpsertSupplierRequest | SupplierResponse | ISupplierService | Tạo nhà cung cấp mới |
@@ -150,11 +150,11 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | POST | /api/v1/tables/transfer | TablesController.Transfer (TablesController.cs:58) | Auth | TransferTableRequest | void | ITableService | Chuyển bàn / gộp bàn |
 | DELETE | /api/v1/tables/{id} | TablesController.Delete (TablesController.cs:67) | Mgr/Admin | None | void | ITableService | Xóa bàn |
 | GET | /api/v1/warehouse-stocks | WarehouseStocksController.Get (WarehouseStocksController.cs:22) | Auth | None | PagedWarehouseStockResponse | IWarehouseStockService | Tồn kho theo kho và sản phẩm |
-| GET | /api/v1/warehouse-transfers | WarehouseTransfersController.Get (WarehouseTransfersController.cs:17) | Auth | None | List<WarehouseTransferResponse> | IWarehouseTransferService | Danh sách chuyển kho nội bộ |
-| GET | /api/v1/warehouse-transfers/{id} | WarehouseTransfersController.GetById (WarehouseTransfersController.cs:25) | Auth | None | WarehouseTransferResponse | IWarehouseTransferService | Chi tiết phiếu chuyển kho nội bộ |
-| POST | /api/v1/warehouse-transfers | WarehouseTransfersController.Create (WarehouseTransfersController.cs:33) | Auth | CreateWarehouseTransferRequest | WarehouseTransferResponse | IWarehouseTransferService | Tạo phiếu chuyển kho nội bộ |
-| POST | /api/v1/warehouse-transfers/{id}/confirm | WarehouseTransfersController.Confirm (WarehouseTransfersController.cs:41) | Auth | None | WarehouseTransferResponse | IWarehouseTransferService | Xác nhận duyệt chuyển kho |
-| POST | /api/v1/warehouse-transfers/{id}/cancel | WarehouseTransfersController.Cancel (WarehouseTransfersController.cs:49) | Auth | None | WarehouseTransferResponse | IWarehouseTransferService | Hủy phiếu chuyển kho |
+| GET | /api/v1/warehouse-transfers | WarehouseTransfersController.Get (WarehouseTransfersController.cs:17) | Mgr/Admin | None | List<WarehouseTransferResponse> | IWarehouseTransferService | Danh sách chuyển kho nội bộ |
+| GET | /api/v1/warehouse-transfers/{id} | WarehouseTransfersController.GetById (WarehouseTransfersController.cs:25) | Mgr/Admin | None | WarehouseTransferResponse | IWarehouseTransferService | Chi tiết phiếu chuyển kho nội bộ |
+| POST | /api/v1/warehouse-transfers | WarehouseTransfersController.Create (WarehouseTransfersController.cs:33) | Mgr/Admin | CreateWarehouseTransferRequest | WarehouseTransferResponse | IWarehouseTransferService | Tạo phiếu chuyển kho nội bộ |
+| POST | /api/v1/warehouse-transfers/{id}/confirm | WarehouseTransfersController.Confirm (WarehouseTransfersController.cs:41) | Mgr/Admin | None | WarehouseTransferResponse | IWarehouseTransferService | Xác nhận duyệt chuyển kho |
+| POST | /api/v1/warehouse-transfers/{id}/cancel | WarehouseTransfersController.Cancel (WarehouseTransfersController.cs:49) | Mgr/Admin | None | WarehouseTransferResponse | IWarehouseTransferService | Hủy phiếu chuyển kho |
 | GET | /api/v1/warehouses | WarehousesController.Get (WarehousesController.cs:16) | Auth | None | List<WarehouseResponse> | IWarehouseService | Danh sách kho |
 | GET | /api/v1/warehouses/{id} | WarehousesController.GetById (WarehousesController.cs:23) | Auth | None | WarehouseResponse | IWarehouseService | Chi tiết kho |
 | POST | /api/v1/warehouses | WarehousesController.Create (WarehousesController.cs:30) | Mgr/Admin | UpsertWarehouseRequest | WarehouseResponse | IWarehouseService | Tạo kho mới |

@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/warehouse-transfers")]
-[Authorize]
+[Authorize(Policy = "ManagerOnly")]
 public class WarehouseTransfersController : ControllerBase
 {
     private readonly IWarehouseTransferService _service;

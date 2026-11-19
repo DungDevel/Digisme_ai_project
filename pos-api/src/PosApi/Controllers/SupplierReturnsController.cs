@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/supplier-returns")]
-[Authorize]
+[Authorize(Policy = "ManagerOnly")]
 public class SupplierReturnsController : ControllerBase
 {
     private readonly ISupplierReturnService _service;

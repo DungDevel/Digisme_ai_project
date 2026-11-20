@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/stock-takes")]
-[Authorize]
+[Authorize(Policy = "ManagerOnly")]
 public class StockTakesController : ControllerBase
 {
     private readonly IStockTakeService _service;

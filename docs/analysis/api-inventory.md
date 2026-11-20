@@ -49,11 +49,11 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | DELETE | /api/v1/carts/{id} | CartsController.Delete (CartsController.cs:39) | Auth | None | void | ICartService | Xóa giỏ hàng tạm |
 | GET | /api/v1/cash-fund-book/summary | CashFundBookController.Summary (CashFundBookController.cs:15) | Auth | None | CashFundSummaryResponse | ICashFundBookService | Tổng quan quỹ tiền mặt |
 | GET | /api/v1/cash-fund-book/ledger | CashFundBookController.Ledger (CashFundBookController.cs:22) | Auth | None | List<CashFundLedgerResponse> | ICashFundBookService | Sổ quỹ tiền mặt |
-| GET | /api/v1/cash-vouchers | CashVouchersController.Get (CashVouchersController.cs:16) | Auth | None | List<CashVoucherResponse> | ICashVoucherService | Lấy danh sách phiếu thu/chi |
-| GET | /api/v1/cash-vouchers/{id} | CashVouchersController.GetById (CashVouchersController.cs:24) | Auth | None | CashVoucherResponse | ICashVoucherService | Chi tiết phiếu thu/chi |
-| POST | /api/v1/cash-vouchers | CashVouchersController.Create (CashVouchersController.cs:32) | Auth | UpsertCashVoucherRequest | CashVoucherResponse | ICashVoucherService | Tạo phiếu thu/chi |
-| POST | /api/v1/cash-vouchers/{id}/confirm | CashVouchersController.Confirm (CashVouchersController.cs:40) | Auth | None | CashVoucherResponse | ICashVoucherService | Xác nhận phiếu thu/chi |
-| POST | /api/v1/cash-vouchers/{id}/cancel | CashVouchersController.Cancel (CashVouchersController.cs:48) | Auth | None | CashVoucherResponse | ICashVoucherService | Hủy phiếu thu/chi |
+| GET | /api/v1/cash-vouchers | CashVouchersController.Get (CashVouchersController.cs:16) | Mgr/Admin | None | List<CashVoucherResponse> | ICashVoucherService | Lấy danh sách phiếu thu/chi |
+| GET | /api/v1/cash-vouchers/{id} | CashVouchersController.GetById (CashVouchersController.cs:24) | Mgr/Admin | None | CashVoucherResponse | ICashVoucherService | Chi tiết phiếu thu/chi |
+| POST | /api/v1/cash-vouchers | CashVouchersController.Create (CashVouchersController.cs:32) | Mgr/Admin | UpsertCashVoucherRequest | CashVoucherResponse | ICashVoucherService | Tạo phiếu thu/chi |
+| POST | /api/v1/cash-vouchers/{id}/confirm | CashVouchersController.Confirm (CashVouchersController.cs:40) | Mgr/Admin | None | CashVoucherResponse | ICashVoucherService | Xác nhận phiếu thu/chi |
+| POST | /api/v1/cash-vouchers/{id}/cancel | CashVouchersController.Cancel (CashVouchersController.cs:48) | Mgr/Admin | None | CashVoucherResponse | ICashVoucherService | Hủy phiếu thu/chi |
 | GET | /api/v1/customer-groups | CustomerGroupsController.Get (CustomerGroupsController.cs:16) | Auth | None | List<CustomerGroupResponse> | ICustomerGroupService | Danh sách nhóm khách hàng |
 | GET | /api/v1/customer-groups/{id} | CustomerGroupsController.GetById (CustomerGroupsController.cs:24) | Auth | None | CustomerGroupResponse | ICustomerGroupService | Chi tiết nhóm khách hàng |
 | POST | /api/v1/customer-groups | CustomerGroupsController.Create (CustomerGroupsController.cs:32) | Mgr/Admin | UpsertCustomerGroupRequest | CustomerGroupResponse | ICustomerGroupService | Tạo nhóm khách hàng |
@@ -123,15 +123,15 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | POST | /api/v1/stock-ins/{id}/confirm | StockInsController.Confirm (StockInsController.cs:69) | Auth | ConfirmStockInRequest | StockInResponse | IStockInService | Xác nhận chốt phiếu nhập kho |
 | POST | /api/v1/stock-ins/{id}/cancel | StockInsController.Cancel (StockInsController.cs:77) | Auth | None | StockInResponse | IStockInService | Hủy phiếu nhập kho |
 | DELETE | /api/v1/stock-ins/{id} | StockInsController.Delete (StockInsController.cs:85) | Auth | None | void | IStockInService | Xóa phiếu nhập kho |
-| GET | /api/v1/stock-takes | StockTakesController.Get (StockTakesController.cs:16) | Auth | None | List<StockTakeResponse> | IStockTakeService | Danh sách kiểm kê kho |
-| GET | /api/v1/stock-takes/{id} | StockTakesController.GetById (StockTakesController.cs:24) | Auth | None | StockTakeResponse | IStockTakeService | Chi tiết phiếu kiểm kê |
-| POST | /api/v1/stock-takes | StockTakesController.Create (StockTakesController.cs:32) | Auth | UpsertStockTakeRequest | StockTakeResponse | IStockTakeService | Tạo phiếu kiểm kê kho |
-| POST | /api/v1/stock-takes/{id}/confirm | StockTakesController.Confirm (StockTakesController.cs:40) | Auth | None | StockTakeResponse | IStockTakeService | Xác nhận duyệt kiểm kê kho |
-| POST | /api/v1/stock-takes/{id}/cancel | StockTakesController.Cancel (StockTakesController.cs:48) | Auth | None | StockTakeResponse | IStockTakeService | Hủy phiếu kiểm kê kho |
-| GET | /api/v1/supplier-debts | SupplierDebtsController.Get (SupplierDebtsController.cs:16) | Auth | None | List<SupplierDebtResponse> | ISupplierDebtService | Danh sách công nợ nhà cung cấp |
-| POST | /api/v1/supplier-debts/{id}/pay | SupplierDebtsController.Pay (SupplierDebtsController.cs:24) | Auth | PaySupplierDebtRequest | SupplierDebtResponse | ISupplierDebtService | Thanh toán công nợ nhà cung cấp |
-| GET | /api/v1/supplier-debts/aging | SupplierDebtsController.Aging (SupplierDebtsController.cs:32) | Auth | None | List<SupplierDebtAgingResponse> | ISupplierDebtService | Tuổi nợ nhà cung cấp |
-| POST | /api/v1/supplier-debts/recalculate | SupplierDebtsController.Recalculate (SupplierDebtsController.cs:40) | Admin | None | void | ISupplierDebtService | Tính lại công nợ nhà cung cấp |
+| GET | /api/v1/stock-takes | StockTakesController.Get (StockTakesController.cs:16) | Mgr/Admin | None | List<StockTakeResponse> | IStockTakeService | Danh sách kiểm kê kho |
+| GET | /api/v1/stock-takes/{id} | StockTakesController.GetById (StockTakesController.cs:24) | Mgr/Admin | None | StockTakeResponse | IStockTakeService | Chi tiết phiếu kiểm kê |
+| POST | /api/v1/stock-takes | StockTakesController.Create (StockTakesController.cs:32) | Mgr/Admin | UpsertStockTakeRequest | StockTakeResponse | IStockTakeService | Tạo phiếu kiểm kê kho |
+| POST | /api/v1/stock-takes/{id}/confirm | StockTakesController.Confirm (StockTakesController.cs:40) | Mgr/Admin | None | StockTakeResponse | IStockTakeService | Xác nhận duyệt kiểm kê kho |
+| POST | /api/v1/stock-takes/{id}/cancel | StockTakesController.Cancel (StockTakesController.cs:48) | Mgr/Admin | None | StockTakeResponse | IStockTakeService | Hủy phiếu kiểm kê kho |
+| GET | /api/v1/supplier-debts | SupplierDebtsController.Get (SupplierDebtsController.cs:16) | Mgr/Admin | None | List<SupplierDebtResponse> | ISupplierDebtService | Danh sách công nợ nhà cung cấp |
+| POST | /api/v1/supplier-debts/{id}/pay | SupplierDebtsController.Pay (SupplierDebtsController.cs:24) | Mgr/Admin | PaySupplierDebtRequest | SupplierDebtResponse | ISupplierDebtService | Thanh toán công nợ nhà cung cấp |
+| GET | /api/v1/supplier-debts/aging | SupplierDebtsController.Aging (SupplierDebtsController.cs:32) | Mgr/Admin | None | List<SupplierDebtAgingResponse> | ISupplierDebtService | Tuổi nợ nhà cung cấp |
+| POST | /api/v1/supplier-debts/recalculate | SupplierDebtsController.Recalculate (SupplierDebtsController.cs:40) | Mgr/Admin | None | void | ISupplierDebtService | Tính lại công nợ nhà cung cấp |
 | GET | /api/v1/supplier-returns | SupplierReturnsController.Get (SupplierReturnsController.cs:16) | Mgr/Admin | None | List<SupplierReturnResponse> | ISupplierReturnService | Danh sách trả hàng nhà cung cấp |
 | GET | /api/v1/supplier-returns/{id} | SupplierReturnsController.GetById (SupplierReturnsController.cs:24) | Mgr/Admin | None | SupplierReturnResponse | ISupplierReturnService | Chi tiết trả hàng nhà cung cấp |
 | POST | /api/v1/supplier-returns | SupplierReturnsController.Create (SupplierReturnsController.cs:32) | Mgr/Admin | UpsertSupplierReturnRequest | SupplierReturnResponse | ISupplierReturnService | Tạo phiếu trả hàng nhà cung cấp |

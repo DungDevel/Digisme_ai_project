@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/supplier-debts")]
-[Authorize]
+[Authorize(Policy = "ManagerOnly")]
 public class SupplierDebtsController : ControllerBase
 {
     private readonly ISupplierDebtService _service;

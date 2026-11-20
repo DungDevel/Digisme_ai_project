@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/cash-vouchers")]
-[Authorize]
+[Authorize(Policy = "ManagerOnly")]
 public class CashVouchersController : ControllerBase
 {
     private readonly ICashVoucherService _service;

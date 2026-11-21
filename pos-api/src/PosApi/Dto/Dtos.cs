@@ -325,8 +325,10 @@ public record PagedWarehouseTransferResponse(int Page, int PageSize, int Total, 
 public record StockTakeItemRequest(int ProductId, decimal SystemQty, decimal ActualQty, string? Note);
 public record StockTakeCreateRequest(int WarehouseId, string? Note, List<StockTakeItemRequest> Items);
 public record StockTakeItemResponse(int Id, int ProductId, string ProductBarcode, string ProductName, decimal SystemQty, decimal ActualQty, decimal DeltaQty);
-public record StockTakeResponse(int Id, string Code, int WarehouseId, string WarehouseName, StockTakeStatus Status, string? Note, int CreatedBy, DateTime CreatedAt, List<StockTakeItemResponse> Items);
+public record StockTakeResponse(int Id, string Code, int WarehouseId, string WarehouseName, StockTakeStatus Status, string? Note, int CreatedBy, DateTime CreatedAt, decimal? TotalDeltaValue, string? ApprovalLevel, int? ConfirmedBy, DateTime? ConfirmedAt, List<StockTakeItemResponse> Items);
 public record PagedStockTakeResponse(int Page, int PageSize, int Total, int TotalPages, List<StockTakeResponse> Items);
+public record StockTakeThresholdsResponse(decimal AutoLimit, decimal ManagerLimit);
+public record StockTakeThresholdsRequest(decimal AutoLimit, decimal ManagerLimit);
 
 public record SupplierReturnItemRequest(int ProductId, decimal Qty, decimal UnitCost, string? Note);
 public record SupplierReturnCreateRequest(int SupplierId, int WarehouseId, string? Note, List<SupplierReturnItemRequest> Items);

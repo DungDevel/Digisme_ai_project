@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PosApi.Data;
 using PosApi.Domain;
+using PosApi.Dto;
 using PosApi.Services;
 
 namespace PosApi.Controllers;
@@ -77,6 +78,44 @@ public class SettingsController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(new { message = "Cập nhật cấu hình cửa hàng thành công", setting });
+    }
+
+    [HttpGet("stock-take-thresholds")]
+    public async Task<IActionResult> GetStockTakeThresholds()
+    {
+        var setting = await _db.StoreSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Id == 1);
+        decimal autoLimit = setting?.StockTakeAutoLimit > 0 ? setting.StockTakeAutoLimit : 200000m;
+        decimal managerLimit = setting?.StockTakeManagerLimit > 0 ? setting.StockTakeManagerLimit : 1000000m;
+        return Ok(new StockTakeThresholdsResponse(autoLimit, managerLimit));
+    }
+
+    [HttpPut("stock-take-thresholds")]
+    [Authorize(Policy = "ManagerOnly")]
+    public async Task<IActionResult> UpdateStockTakeThresholds([FromBody] StockTakeThresholdsRequest req)
+    {
+        var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        if (user is null || !user.IsOwner)
+            throw new BusinessRuleException("Chỉ Store Owner mới có quyền cấu hình ngưỡng duyệt kiểm kê");
+
+        if (req.AutoLimit <= 0 || req.AutoLimit >= req.ManagerLimit)
+            throw new BusinessRuleException("Ngưỡng tự động phải > 0 và nhỏ hơn ngưỡng Manager");
+
+        var setting = await _db.StoreSettings.FirstOrDefaultAsync(s => s.Id == 1);
+        if (setting == null)
+        {
+            setting = new StoreSetting { Id = 1 };
+            _db.StoreSettings.Add(setting);
+        }
+
+        setting.StockTakeAutoLimit = req.AutoLimit;
+        setting.StockTakeManagerLimit = req.ManagerLimit;
+        setting.UpdatedAt = DateTime.UtcNow;
+
+        PosLogService.Write(_db, "STOCK_TAKE_THRESHOLDS_UPDATED", userId, "settings", "1");
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Cập nhật ngưỡng duyệt kiểm kê thành công", autoLimit = setting.StockTakeAutoLimit, managerLimit = setting.StockTakeManagerLimit });
     }
 }
 

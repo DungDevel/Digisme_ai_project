@@ -20,7 +20,7 @@ Tài liệu này tổng hợp các câu hỏi mở cần chủ đầu tư / ngư
 - **Vấn đề:** Chủ cửa hàng có được tự do cấu hình số lượng quầy và máy POS hay cần giới hạn theo gói đăng ký dịch vụ của khách hàng?
 - **Phương án đề xuất:** Cho phép cấu hình linh hoạt qua giao diện Cài đặt (Store Settings / Counter management), mặc định không giới hạn số lượng trong phiên bản nội bộ, chuẩn bị sẵn trường giới hạn để tích hợp licensing sau này.
 
-### Q5: Ngưỡng duyệt chênh lệch kiểm kê kho (B8) — *Đã chốt, chờ xác nhận*
+### Q5: Ngưỡng duyệt chênh lệch kiểm kê kho (B8) — *Đã chốt và hiện thực hóa (B8)*
 - **Vấn đề:** Mức ngưỡng duyệt chênh lệch kiểm kê kho (Dưới 200.000đ tự động duyệt, 200k–1M do Store Manager duyệt, trên 1M do Owner/Accountant duyệt) đã phù hợp với quy mô cửa hàng chưa?
 - **Phương án đề xuất:** Giữ nguyên các mức khởi điểm như đề xuất (200.000đ và 1.000.000đ) nhưng cho phép chủ cửa hàng cấu hình lại ngưỡng này trong phần thiết lập hệ thống.
 

@@ -109,6 +109,8 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | DELETE | /api/v1/rooms/{id} | RoomsController.Delete (RoomsController.cs:66) | Mgr/Admin | None | void | IRoomService | Xóa phòng |
 | GET | /api/v1/settings/store-profile | SettingsController.GetProfile (SettingsController.cs:16) | Auth | None | StoreProfileResponse | ISettingsService | Lấy cấu hình cửa hàng |
 | PUT | /api/v1/settings/store-profile | SettingsController.UpdateProfile (SettingsController.cs:23) | Admin | UpsertStoreProfileRequest | StoreProfileResponse | ISettingsService | Cập nhật cấu hình cửa hàng |
+| GET | /api/v1/settings/stock-take-thresholds | SettingsController.GetStockTakeThresholds (SettingsController.cs:83) | Auth | None | StockTakeThresholdsResponse | ISettingsService | Lấy ngưỡng duyệt kiểm kê kho |
+| PUT | /api/v1/settings/stock-take-thresholds | SettingsController.UpdateStockTakeThresholds (SettingsController.cs:92) | Owner | StockTakeThresholdsRequest | object | ISettingsService | Cập nhật ngưỡng duyệt kiểm kê kho |
 | POST | /api/v1/shifts/open | ShiftsController.Open (ShiftsController.cs:24) | Auth | OpenShiftRequest | ShiftResponse | IShiftService | Mở ca làm việc |
 | GET | /api/v1/shifts/current | ShiftsController.Current (ShiftsController.cs:32) | Auth | None | ShiftResponse | IShiftService | Lấy ca làm việc hiện tại |
 | GET | /api/v1/shifts/current/summary | ShiftsController.Summary (ShiftsController.cs:40) | Auth | None | ShiftSummaryResponse | IShiftService | Tóm tắt ca hiện tại |

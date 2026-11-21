@@ -136,6 +136,43 @@ public class StockTakeService : IStockTakeService
         if (stockTake.Status != StockTakeStatus.Draft)
             throw new BusinessRuleException("Phiếu kiểm kê không ở trạng thái nháp để có thể duyệt");
 
+        var setting = await _db.StoreSettings.FirstOrDefaultAsync(s => s.Id == 1);
+        decimal autoLimit = setting?.StockTakeAutoLimit > 0 ? setting.StockTakeAutoLimit : 200000m;
+        decimal managerLimit = setting?.StockTakeManagerLimit > 0 ? setting.StockTakeManagerLimit : 1000000m;
+
+        decimal totalDeltaValue = 0m;
+        foreach (var item in stockTake.Items)
+        {
+            var costPrice = item.Product?.CostPrice ?? 0m;
+            totalDeltaValue += Math.Abs(item.DeltaQty) * costPrice;
+        }
+
+        string approvalLevel;
+        if (totalDeltaValue < autoLimit)
+        {
+            approvalLevel = "Auto";
+        }
+        else if (totalDeltaValue <= managerLimit)
+        {
+            approvalLevel = "Manager";
+            if (userId == stockTake.CreatedBy)
+                throw new BusinessRuleException("Người tạo không được tự duyệt phiếu của chính mình khi chênh lệch từ 200.000đ đến 1.000.000đ");
+        }
+        else
+        {
+            approvalLevel = "Owner";
+            var isOwner = await _db.Users.AnyAsync(u => u.Id == userId && u.IsOwner);
+            if (!isOwner)
+                throw new BusinessRuleException("Cần quyền Store Owner để duyệt phiếu chênh lệch trên 1.000.000đ");
+            if (userId == stockTake.CreatedBy)
+                throw new BusinessRuleException("Người tạo không được tự duyệt phiếu của chính mình khi chênh lệch trên 1.000.000đ");
+        }
+
+        stockTake.TotalDeltaValue = totalDeltaValue;
+        stockTake.ApprovalLevel = approvalLevel;
+        stockTake.ConfirmedBy = userId;
+        stockTake.ConfirmedAt = DateTime.UtcNow;
+
         foreach (var item in stockTake.Items)
         {
             var stockRecord = await _db.WarehouseStocks
@@ -204,6 +241,10 @@ public class StockTakeService : IStockTakeService
         s.Note,
         s.CreatedBy,
         s.CreatedAt,
+        s.TotalDeltaValue,
+        s.ApprovalLevel,
+        s.ConfirmedBy,
+        s.ConfirmedAt,
         s.Items?.Select(i => new StockTakeItemResponse(
             i.Id,
             i.ProductId,

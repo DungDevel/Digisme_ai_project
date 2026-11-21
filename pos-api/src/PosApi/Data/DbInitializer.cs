@@ -16,10 +16,19 @@ public static class DbInitializer
         if (!await db.Users.AnyAsync())
         {
             db.Users.AddRange(
-                new User { Username = "admin", FullName = "Quản Lý", Email = "admin@digisme.local", PasswordHash = Hashing.Hash("admin123"), Role = UserRole.Manager },
+                new User { Username = "admin", FullName = "Quản Lý", Email = "admin@digisme.local", PasswordHash = Hashing.Hash("admin123"), Role = UserRole.Manager, IsOwner = true },
                 new User { Username = "cau1", FullName = "Cẩm Tú", Email = "cau1@digisme.local", PasswordHash = Hashing.Hash("cau11234"), Role = UserRole.Cashier });
             await db.SaveChangesAsync();
-            log.LogInformation("Seeded users: admin/admin123 (Manager), cau1/cau11234 (Cashier)");
+            log.LogInformation("Seeded users: admin/admin123 (Manager, Owner), cau1/cau11234 (Cashier)");
+        }
+        else
+        {
+            var adminUser = await db.Users.FirstOrDefaultAsync(u => u.Username == "admin");
+            if (adminUser != null && !adminUser.IsOwner)
+            {
+                adminUser.IsOwner = true;
+                await db.SaveChangesAsync();
+            }
         }
 
         // ── Units ──

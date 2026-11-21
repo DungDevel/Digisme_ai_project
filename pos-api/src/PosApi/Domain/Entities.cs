@@ -34,6 +34,7 @@ public class User
     public string Email { get; set; } = string.Empty;          // unique
     public string PasswordHash { get; set; } = string.Empty;
     public UserRole Role { get; set; } = UserRole.Cashier;
+    public bool IsOwner { get; set; } = false;
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<Shift> Shifts { get; set; } = new();
@@ -487,6 +488,8 @@ public class StoreSetting
     public string VietQrAccountName { get; set; } = string.Empty;
     /// Giá trong DB đã gồm VAT — đây là thuế suất % dùng để tách cột Vat hiển thị
     public decimal VatRatePercent { get; set; } = 10m;
+    public decimal StockTakeAutoLimit { get; set; } = 200000m;
+    public decimal StockTakeManagerLimit { get; set; } = 1000000m;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -639,6 +642,10 @@ public class StockTake
     public string? Note { get; set; }
     public int CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public decimal? TotalDeltaValue { get; set; }
+    public string? ApprovalLevel { get; set; }
+    public int? ConfirmedBy { get; set; }
+    public DateTime? ConfirmedAt { get; set; }
     public List<StockTakeItem> Items { get; set; } = new();
 }
 

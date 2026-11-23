@@ -115,6 +115,12 @@ public class OrderService : IOrderService
         if (req.PaidAmount < 0) throw new BusinessRuleException("paidAmount không được âm");
         if (req.Discount < 0) throw new BusinessRuleException("discount không được âm");
 
+        var openShiftId = await _db.Shifts.AsNoTracking()
+            .Where(s => s.UserId == userId && s.Status == ShiftStatus.Open)
+            .Select(s => (int?)s.Id).FirstOrDefaultAsync();
+        if (openShiftId is null)
+            throw new BusinessRuleException("Chưa mở ca làm việc — vui lòng mở ca trước khi bán hàng");
+
         var paymentMethod = ParsePaymentMethod(req.PaymentMethod);
 
         var storeSetting = await _db.StoreSettings.AsNoTracking().FirstAsync();
@@ -470,13 +476,12 @@ public class OrderService : IOrderService
             }
 
             var isCompleted = paymentMethod is PaymentMethod.Cash or PaymentMethod.Debt;
-            var openShift = await _db.Shifts.FirstOrDefaultAsync(s => s.UserId == userId && s.Status == ShiftStatus.Open);
             var order = new Order
             {
                 Code = code,
                 CashierId = userId,
                 CustomerId = req.CustomerId,
-                ShiftId = openShift?.Id,
+                ShiftId = openShiftId,
                 Subtotal = subtotal,
                 Discount = discount,
                 SurchargeTotal = surchargeTotal,

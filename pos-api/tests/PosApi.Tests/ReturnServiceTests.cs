@@ -74,6 +74,7 @@ public class ReturnServiceTests
         };
         context.Users.Add(cashier);
         await context.SaveChangesAsync();
+        await ShiftTestHelper.EnsureOpenShiftAsync(context, cashier.Id);
 
         return (cashier.Id, product);
     }

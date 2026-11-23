@@ -68,6 +68,7 @@ public class OrderServiceTests
         };
         context.Users.Add(user);
         await context.SaveChangesAsync();
+        await ShiftTestHelper.EnsureOpenShiftAsync(context, user.Id);
 
         return (user.Id, product);
     }
@@ -673,6 +674,7 @@ public class OrderServiceTests
         var cashier = new User { Username = "u_" + uniqueId, Email = "u_" + uniqueId + "@test.com", FullName = "U", Role = UserRole.Manager, PasswordHash = "x" };
         context.Users.Add(cashier);
         await context.SaveChangesAsync();
+        await ShiftTestHelper.EnsureOpenShiftAsync(context, cashier.Id);
 
         var req = new CreateOrderRequest(
             CustomerId: cust.Id,
@@ -871,6 +873,7 @@ public class OrderServiceTests
         var cashier = new User { Username = "cashier_bom", FullName = "Cashier BOM", Role = UserRole.Cashier };
         context.Users.Add(cashier);
         await context.SaveChangesAsync();
+        await ShiftTestHelper.EnsureOpenShiftAsync(context, cashier.Id);
 
         var cat = new Category { Name = "FnB" };
         context.Categories.Add(cat);

@@ -74,7 +74,7 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | GET | /api/v1/inventory/low-stock | InventoryController.LowStock (InventoryController.cs:30) | Auth | None | List<InventoryResponse> | IInventoryService | Danh sách hàng sắp hết |
 | GET | /api/v1/inventory/{productId} | InventoryController.GetById (InventoryController.cs:38) | Auth | None | InventoryResponse | IInventoryService | Tồn kho theo sản phẩm |
 | POST | /api/v1/inventory/adjust | InventoryController.Adjust (InventoryController.cs:46) | Mgr/Admin | AdjustInventoryRequest | InventoryResponse | IInventoryService | Điều chỉnh tồn kho thủ công |
-| POST | /api/v1/orders | OrdersController.Create (OrdersController.cs:20) | Auth | CreateOrderRequest | OrderCreatedResponse | IOrderService | Tạo đơn hàng bán |
+| POST | /api/v1/orders | OrdersController.Create (OrdersController.cs:20) | Auth | CreateOrderRequest | OrderCreatedResponse | IOrderService | Tạo đơn hàng bán (yêu cầu người bán có ca đang mở, nếu không trả 400; Order.ShiftId do server gán) |
 | GET | /api/v1/orders | OrdersController.Get (OrdersController.cs:28) | Auth | None | List<OrderResponse> | IOrderService | Danh sách đơn hàng |
 | GET | /api/v1/orders/{id} | OrdersController.GetById (OrdersController.cs:36) | Auth | None | OrderResponse | IOrderService | Chi tiết đơn hàng |
 | PUT | /api/v1/orders/{id} | OrdersController.Update (OrdersController.cs:44) | Auth | UpdateOrderRequest | OrderResponse | IOrderService | Cập nhật đơn hàng |

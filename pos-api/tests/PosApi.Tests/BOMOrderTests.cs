@@ -32,6 +32,7 @@ public class BOMOrderTests
             var user = new User { Username = "cashier_fnb", FullName = "Nhân viên F&B", Role = UserRole.Cashier };
             context.Users.Add(user);
             await context.SaveChangesAsync();
+            await ShiftTestHelper.EnsureOpenShiftAsync(context, user.Id);
 
             var cat = new Category { Name = "Đồ uống F&B" };
             context.Categories.Add(cat);

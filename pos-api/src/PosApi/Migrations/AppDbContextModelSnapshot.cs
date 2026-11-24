@@ -61,7 +61,78 @@ namespace PosApi.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("Areas", (string)null);
+                    b.ToTable("Areas");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.BankTransaction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("Content")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("MatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("OrderId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ReferenceCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResolutionNote")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("ResolvedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("TransactionDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("UnmatchedReason")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("ResolvedByUserId");
+
+                    b.HasIndex("Provider", "ExternalId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "TransactionDate");
+
+                    b.ToTable("BankTransactions");
                 });
 
             modelBuilder.Entity("PosApi.Domain.CashLedgerEntry", b =>
@@ -103,7 +174,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.ToTable("CashLedger", (string)null);
+                    b.ToTable("CashLedger");
                 });
 
             modelBuilder.Entity("PosApi.Domain.CashVoucher", b =>
@@ -166,7 +237,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ShiftId");
 
-                    b.ToTable("CashVouchers", (string)null);
+                    b.ToTable("CashVouchers");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Category", b =>
@@ -190,7 +261,7 @@ namespace PosApi.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Categories", (string)null);
+                    b.ToTable("Categories");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Counter", b =>
@@ -229,7 +300,7 @@ namespace PosApi.Migrations
                         .IsUnique()
                         .HasFilter("\"IsDefault\" = true");
 
-                    b.ToTable("Counters", (string)null);
+                    b.ToTable("Counters");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Customer", b =>
@@ -272,7 +343,7 @@ namespace PosApi.Migrations
                     b.HasIndex("Phone")
                         .IsUnique();
 
-                    b.ToTable("Customers", (string)null);
+                    b.ToTable("Customers");
                 });
 
             modelBuilder.Entity("PosApi.Domain.CustomerGroup", b =>
@@ -319,7 +390,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ParentId");
 
-                    b.ToTable("CustomerGroups", (string)null);
+                    b.ToTable("CustomerGroups");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Debt", b =>
@@ -356,7 +427,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Debts", (string)null);
+                    b.ToTable("Debts");
                 });
 
             modelBuilder.Entity("PosApi.Domain.HeldCart", b =>
@@ -395,7 +466,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("HeldCarts", (string)null);
+                    b.ToTable("HeldCarts");
                 });
 
             modelBuilder.Entity("PosApi.Domain.IdempotencyRecord", b =>
@@ -436,7 +507,7 @@ namespace PosApi.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_idempotency_key_user");
 
-                    b.ToTable("IdempotencyRecords", (string)null);
+                    b.ToTable("IdempotencyRecords");
                 });
 
             modelBuilder.Entity("PosApi.Domain.InventoryReconcileIssue", b =>
@@ -514,7 +585,7 @@ namespace PosApi.Migrations
                     b.HasIndex("CustomerId")
                         .IsUnique();
 
-                    b.ToTable("LoyaltyAccounts", (string)null);
+                    b.ToTable("LoyaltyAccounts");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Order", b =>
@@ -608,7 +679,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ShiftId");
 
-                    b.ToTable("Orders", (string)null);
+                    b.ToTable("Orders");
                 });
 
             modelBuilder.Entity("PosApi.Domain.OrderImage", b =>
@@ -637,7 +708,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("OrderId");
 
-                    b.ToTable("OrderImages", (string)null);
+                    b.ToTable("OrderImages");
                 });
 
             modelBuilder.Entity("PosApi.Domain.OrderItem", b =>
@@ -692,7 +763,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.ToTable("OrderItems", (string)null);
+                    b.ToTable("OrderItems");
                 });
 
             modelBuilder.Entity("PosApi.Domain.PasswordResetCode", b =>
@@ -723,7 +794,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("PasswordResetCodes", (string)null);
+                    b.ToTable("PasswordResetCodes");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Payment", b =>
@@ -763,7 +834,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("Method", "Status");
 
-                    b.ToTable("Payments", (string)null);
+                    b.ToTable("Payments");
                 });
 
             modelBuilder.Entity("PosApi.Domain.PointTransaction", b =>
@@ -806,7 +877,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ReturnRecordId");
 
-                    b.ToTable("PointTransactions", (string)null);
+                    b.ToTable("PointTransactions");
                 });
 
             modelBuilder.Entity("PosApi.Domain.PosDevice", b =>
@@ -843,7 +914,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("CounterId");
 
-                    b.ToTable("PosDevices", (string)null);
+                    b.ToTable("PosDevices");
                 });
 
             modelBuilder.Entity("PosApi.Domain.PosLog", b =>
@@ -882,7 +953,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.ToTable("PosLogs", (string)null);
+                    b.ToTable("PosLogs");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Product", b =>
@@ -955,7 +1026,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("Name");
 
-                    b.ToTable("Products", (string)null);
+                    b.ToTable("Products");
                 });
 
             modelBuilder.Entity("PosApi.Domain.ProductRecipe", b =>
@@ -988,7 +1059,7 @@ namespace PosApi.Migrations
                     b.HasIndex("ProductId", "IngredientId")
                         .IsUnique();
 
-                    b.ToTable("ProductRecipes", (string)null);
+                    b.ToTable("ProductRecipes");
                 });
 
             modelBuilder.Entity("PosApi.Domain.ProductUnit", b =>
@@ -1018,7 +1089,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("UnitId");
 
-                    b.ToTable("ProductUnits", (string)null);
+                    b.ToTable("ProductUnits");
                 });
 
             modelBuilder.Entity("PosApi.Domain.ReturnItem", b =>
@@ -1053,7 +1124,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ReturnId");
 
-                    b.ToTable("ReturnItems", (string)null);
+                    b.ToTable("ReturnItems");
                 });
 
             modelBuilder.Entity("PosApi.Domain.ReturnRecord", b =>
@@ -1092,7 +1163,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("OrderId");
 
-                    b.ToTable("Returns", (string)null);
+                    b.ToTable("Returns");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Room", b =>
@@ -1136,7 +1207,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("CurrentOrderId");
 
-                    b.ToTable("Rooms", (string)null);
+                    b.ToTable("Rooms");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Shift", b =>
@@ -1204,7 +1275,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Shifts", (string)null);
+                    b.ToTable("Shifts");
                 });
 
             modelBuilder.Entity("PosApi.Domain.StockIn", b =>
@@ -1274,7 +1345,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("StockIns", (string)null);
+                    b.ToTable("StockIns");
                 });
 
             modelBuilder.Entity("PosApi.Domain.StockInItem", b =>
@@ -1315,7 +1386,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("StockInId");
 
-                    b.ToTable("StockInItems", (string)null);
+                    b.ToTable("StockInItems");
                 });
 
             modelBuilder.Entity("PosApi.Domain.StockLedgerEntry", b =>
@@ -1359,7 +1430,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ProductId", "CreatedAt");
 
-                    b.ToTable("StockLedger", (string)null);
+                    b.ToTable("StockLedger");
                 });
 
             modelBuilder.Entity("PosApi.Domain.StockTake", b =>
@@ -1409,7 +1480,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("StockTakes", (string)null);
+                    b.ToTable("StockTakes");
                 });
 
             modelBuilder.Entity("PosApi.Domain.StockTakeItem", b =>
@@ -1444,7 +1515,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("StockTakeId");
 
-                    b.ToTable("StockTakeItems", (string)null);
+                    b.ToTable("StockTakeItems");
                 });
 
             modelBuilder.Entity("PosApi.Domain.StoreSetting", b =>
@@ -1505,7 +1576,7 @@ namespace PosApi.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("StoreSettings", (string)null);
+                    b.ToTable("StoreSettings");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Supplier", b =>
@@ -1557,7 +1628,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("CustomerGroupId");
 
-                    b.ToTable("Suppliers", (string)null);
+                    b.ToTable("Suppliers");
                 });
 
             modelBuilder.Entity("PosApi.Domain.SupplierDebt", b =>
@@ -1611,7 +1682,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("SupplierId");
 
-                    b.ToTable("SupplierDebts", (string)null);
+                    b.ToTable("SupplierDebts");
                 });
 
             modelBuilder.Entity("PosApi.Domain.SupplierInvoice", b =>
@@ -1647,7 +1718,7 @@ namespace PosApi.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("SupplierInvoices", (string)null);
+                    b.ToTable("SupplierInvoices");
                 });
 
             modelBuilder.Entity("PosApi.Domain.SupplierReturn", b =>
@@ -1694,7 +1765,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("WarehouseId");
 
-                    b.ToTable("SupplierReturns", (string)null);
+                    b.ToTable("SupplierReturns");
                 });
 
             modelBuilder.Entity("PosApi.Domain.SupplierReturnItem", b =>
@@ -1729,7 +1800,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("SupplierReturnId");
 
-                    b.ToTable("SupplierReturnItems", (string)null);
+                    b.ToTable("SupplierReturnItems");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Surcharge", b =>
@@ -1766,7 +1837,7 @@ namespace PosApi.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Surcharges", (string)null);
+                    b.ToTable("Surcharges");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Table", b =>
@@ -1811,7 +1882,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("CurrentOrderId");
 
-                    b.ToTable("Tables", (string)null);
+                    b.ToTable("Tables");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Unit", b =>
@@ -1832,7 +1903,7 @@ namespace PosApi.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Units", (string)null);
+                    b.ToTable("Units");
                 });
 
             modelBuilder.Entity("PosApi.Domain.User", b =>
@@ -1882,7 +1953,7 @@ namespace PosApi.Migrations
                     b.HasIndex("Username")
                         .IsUnique();
 
-                    b.ToTable("Users", (string)null);
+                    b.ToTable("Users");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Warehouse", b =>
@@ -1924,7 +1995,7 @@ namespace PosApi.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
-                    b.ToTable("Warehouses", (string)null);
+                    b.ToTable("Warehouses");
                 });
 
             modelBuilder.Entity("PosApi.Domain.WarehouseStock", b =>
@@ -1955,7 +2026,7 @@ namespace PosApi.Migrations
                     b.HasIndex("WarehouseId", "ProductId")
                         .IsUnique();
 
-                    b.ToTable("WarehouseStocks", (string)null);
+                    b.ToTable("WarehouseStocks");
                 });
 
             modelBuilder.Entity("PosApi.Domain.WarehouseTransfer", b =>
@@ -1998,7 +2069,7 @@ namespace PosApi.Migrations
 
                     b.HasIndex("ToWarehouseId");
 
-                    b.ToTable("WarehouseTransfers", (string)null);
+                    b.ToTable("WarehouseTransfers");
                 });
 
             modelBuilder.Entity("PosApi.Domain.WarehouseTransferItem", b =>
@@ -2029,7 +2100,24 @@ namespace PosApi.Migrations
 
                     b.HasIndex("WarehouseTransferId");
 
-                    b.ToTable("WarehouseTransferItems", (string)null);
+                    b.ToTable("WarehouseTransferItems");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.BankTransaction", b =>
+                {
+                    b.HasOne("PosApi.Domain.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("PosApi.Domain.User", "ResolvedByUser")
+                        .WithMany()
+                        .HasForeignKey("ResolvedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Order");
+
+                    b.Navigation("ResolvedByUser");
                 });
 
             modelBuilder.Entity("PosApi.Domain.CashVoucher", b =>

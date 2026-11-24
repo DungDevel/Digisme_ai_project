@@ -24,6 +24,9 @@ public enum StockInStatus { Draft = 0, Confirmed = 1, Cancelled = 2 }
 
 public enum LedgerRefType { Sale = 0, Return = 1, Purchase = 2, Adjustment = 3, OcrStockIn = 4 }
 
+public enum BankTransactionStatus { Matched = 0, Unmatched = 1, Resolved = 2, Ignored = 3 }
+public enum UnmatchedReason { NoOrderCode = 0, OrderNotFound = 1, OrderNotPending = 2, AmountMismatch = 3 }
+
 // ─────────────────────────── Auth ───────────────────────────
 
 public class User
@@ -408,6 +411,27 @@ public class Payment
     public string? Reference { get; set; }        // mã VietQR / nội dung chuyển khoản
     public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
     public DateTime? PaidAt { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class BankTransaction
+{
+    public int Id { get; set; }
+    public string Provider { get; set; } = "SePay";
+    public string ExternalId { get; set; } = string.Empty;
+    public string AccountNumber { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string? Content { get; set; }
+    public string? ReferenceCode { get; set; }
+    public DateTime TransactionDate { get; set; }
+    public BankTransactionStatus Status { get; set; }
+    public UnmatchedReason? UnmatchedReason { get; set; }
+    public int? OrderId { get; set; }
+    public Order? Order { get; set; }
+    public DateTime? MatchedAt { get; set; }
+    public int? ResolvedByUserId { get; set; }
+    public User? ResolvedByUser { get; set; }
+    public string? ResolutionNote { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

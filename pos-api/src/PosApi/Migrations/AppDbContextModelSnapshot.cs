@@ -193,6 +193,45 @@ namespace PosApi.Migrations
                     b.ToTable("Categories", (string)null);
                 });
 
+            modelBuilder.Entity("PosApi.Domain.Counter", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\" = true");
+
+                    b.ToTable("Counters", (string)null);
+                });
+
             modelBuilder.Entity("PosApi.Domain.Customer", b =>
                 {
                     b.Property<int>("Id")
@@ -770,6 +809,43 @@ namespace PosApi.Migrations
                     b.ToTable("PointTransactions", (string)null);
                 });
 
+            modelBuilder.Entity("PosApi.Domain.PosDevice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("CounterId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("CounterId");
+
+                    b.ToTable("PosDevices", (string)null);
+                });
+
             modelBuilder.Entity("PosApi.Domain.PosLog", b =>
                 {
                     b.Property<long>("Id")
@@ -1078,6 +1154,9 @@ namespace PosApi.Migrations
                     b.Property<decimal?>("CountedTransfer")
                         .HasColumnType("numeric");
 
+                    b.Property<int>("CounterId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("DenominationsJson")
                         .HasColumnType("text");
 
@@ -1099,6 +1178,9 @@ namespace PosApi.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<int?>("PosDeviceId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1115,6 +1197,10 @@ namespace PosApi.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CounterId");
+
+                    b.HasIndex("PosDeviceId");
 
                     b.HasIndex("UserId");
 
@@ -1373,6 +1459,12 @@ namespace PosApi.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
+
+                    b.Property<int?>("MaxCounters")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxPosDevices")
+                        .HasColumnType("integer");
 
                     b.Property<decimal>("StockTakeAutoLimit")
                         .HasColumnType("numeric");
@@ -2106,6 +2198,17 @@ namespace PosApi.Migrations
                     b.Navigation("ReturnRecord");
                 });
 
+            modelBuilder.Entity("PosApi.Domain.PosDevice", b =>
+                {
+                    b.HasOne("PosApi.Domain.Counter", "Counter")
+                        .WithMany("PosDevices")
+                        .HasForeignKey("CounterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Counter");
+                });
+
             modelBuilder.Entity("PosApi.Domain.Product", b =>
                 {
                     b.HasOne("PosApi.Domain.Category", "Category")
@@ -2204,11 +2307,26 @@ namespace PosApi.Migrations
 
             modelBuilder.Entity("PosApi.Domain.Shift", b =>
                 {
+                    b.HasOne("PosApi.Domain.Counter", "Counter")
+                        .WithMany("Shifts")
+                        .HasForeignKey("CounterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("PosApi.Domain.PosDevice", "PosDevice")
+                        .WithMany()
+                        .HasForeignKey("PosDeviceId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("PosApi.Domain.User", "User")
                         .WithMany("Shifts")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Counter");
+
+                    b.Navigation("PosDevice");
 
                     b.Navigation("User");
                 });
@@ -2455,6 +2573,13 @@ namespace PosApi.Migrations
             modelBuilder.Entity("PosApi.Domain.Category", b =>
                 {
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("PosApi.Domain.Counter", b =>
+                {
+                    b.Navigation("PosDevices");
+
+                    b.Navigation("Shifts");
                 });
 
             modelBuilder.Entity("PosApi.Domain.Customer", b =>

@@ -19,6 +19,9 @@ public class ShiftServiceTests : IAsyncLifetime
 
         _context = new AppDbContext(options);
         await _context.Database.EnsureCreatedAsync();
+
+        _context.Counters.Add(new Counter { Code = "DEFAULT", Name = "Quầy mặc định", IsDefault = true, IsActive = true });
+        await _context.SaveChangesAsync();
     }
 
     public Task DisposeAsync() => Task.CompletedTask;

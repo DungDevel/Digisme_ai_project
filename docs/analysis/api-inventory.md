@@ -34,6 +34,9 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | Method | Route đầy đủ | Controller.Action (file:line) | Auth/Role | Request (DTO chính) | Response (DTO chính) | Service gọi | Mô tả một dòng |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | GET | /api/v1/areas | AreasController.Get (AreasController.cs:15) | Auth | None | List<AreaResponse> | IAreaService | Lấy danh sách khu vực |
+| GET | /api/v1/bank-transactions | BankTransactionsController.ListTransactions (BankTransactionsController.cs:25) | ManagerOnly | None | PagedBankTransactionResponse | BankReconciliationService | Lấy danh sách giao dịch ngân hàng SePay |
+| POST | /api/v1/bank-transactions/{id}/match | BankTransactionsController.MatchTransaction (BankTransactionsController.cs:64) | ManagerOnly | MatchBankTransactionRequest | BankTransactionResponse | BankReconciliationService | Khớp thủ công giao dịch ngân hàng với đơn hàng |
+| POST | /api/v1/bank-transactions/{id}/ignore | BankTransactionsController.IgnoreTransaction (BankTransactionsController.cs:89) | ManagerOnly | IgnoreBankTransactionRequest | BankTransactionResponse | BankReconciliationService | Bỏ qua giao dịch ngân hàng |
 | GET | /api/v1/areas/{id} | AreasController.GetById (AreasController.cs:22) | Auth | None | AreaResponse | IAreaService | Lấy chi tiết khu vực |
 | POST | /api/v1/areas | AreasController.Create (AreasController.cs:29) | Admin/Mgr | UpsertAreaRequest | AreaResponse | IAreaService | Tạo khu vực mới |
 | PUT | /api/v1/areas/{id} | AreasController.Update (AreasController.cs:38) | Admin/Mgr | UpsertAreaRequest | AreaResponse | IAreaService | Cập nhật khu vực |

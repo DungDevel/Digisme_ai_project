@@ -55,12 +55,20 @@ builder.Services.AddScoped<ISupplierDebtService, SupplierDebtService>();
 builder.Services.AddScoped<IFileStorageService, FileStorageService>();
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
+builder.Services.AddScoped<IBankTransactionProvider, SepayProvider>();
+builder.Services.AddScoped<BankReconciliationService>();
+builder.Services.AddHostedService<SepayPollingService>();
 builder.Services.AddSignalR();
 
 // ── HTTP Client cho Health Check ──
 builder.Services.AddHttpClient("AiServiceClient", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(2);
+});
+
+builder.Services.AddHttpClient("SePay", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
 });
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

@@ -54,6 +54,7 @@ public class AppDbContext : DbContext
     public DbSet<CashVoucher> CashVouchers => Set<CashVoucher>();
     public DbSet<CashLedgerEntry> CashLedger => Set<CashLedgerEntry>();
     public DbSet<InventoryReconcileIssue> InventoryReconcileIssues => Set<InventoryReconcileIssue>();
+    public DbSet<BankTransaction> BankTransactions => Set<BankTransaction>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -219,6 +220,21 @@ public class AppDbContext : DbContext
         });
 
         // ── Counter & PosDevice ──
+        mb.Entity<BankTransaction>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.Provider, x.ExternalId }).IsUnique();
+            e.HasIndex(x => new { x.Status, x.TransactionDate });
+            e.Property(x => x.Provider).HasMaxLength(32).IsRequired();
+            e.Property(x => x.ExternalId).HasMaxLength(128).IsRequired();
+            e.Property(x => x.AccountNumber).HasMaxLength(64);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Status).HasConversion<int>();
+            e.Property(x => x.UnmatchedReason).HasConversion<int>();
+            e.HasOne(x => x.Order).WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ResolvedByUser).WithMany().HasForeignKey(x => x.ResolvedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
         mb.Entity<Counter>(e =>
         {
             e.HasIndex(x => x.Code).IsUnique();

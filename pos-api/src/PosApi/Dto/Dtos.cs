@@ -412,3 +412,38 @@ public record InventoryReconcileRequest(int? TargetWarehouseId, bool? DryRun);
 public record ReconcileItemDetailDto(int ProductId, string Barcode, string Name, decimal CurrentStock, decimal TotalWhStock, decimal Diff, string ActionType);
 public record InventoryReconcileResponse(bool DryRun, int TargetWarehouseId, string TargetWarehouseName, int TotalProductsChecked, int ProductsWithSurplusCount, int ProductsWithDeficitCount, List<ReconcileItemDetailDto> Details);
 
+public record IncomingBankTransaction(
+    string ExternalId,
+    string AccountNumber,
+    decimal Amount,
+    string? Content,
+    string? ReferenceCode,
+    DateTime TransactionDateUtc,
+    decimal AmountIn = 0m,
+    decimal AmountOut = 0m
+);
+
+public record BankTransactionResponse(
+    int Id,
+    string Provider,
+    string ExternalId,
+    string AccountNumber,
+    decimal Amount,
+    string? Content,
+    string? ReferenceCode,
+    DateTime TransactionDate,
+    string Status,
+    string? UnmatchedReason,
+    int? OrderId,
+    string? OrderCode,
+    DateTime? MatchedAt,
+    int? ResolvedByUserId,
+    string? ResolutionNote,
+    DateTime CreatedAt
+);
+
+public record MatchBankTransactionRequest(int OrderId, string? Note);
+public record IgnoreBankTransactionRequest(string Note);
+public record PagedBankTransactionResponse(int Page, int PageSize, int Total, int TotalPages, List<BankTransactionResponse> Items);
+
+

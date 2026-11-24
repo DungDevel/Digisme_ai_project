@@ -111,11 +111,21 @@ Tài liệu này được tạo trên nhánh `docs/api-guide` xuất phát từ 
 | PUT | /api/v1/settings/store-profile | SettingsController.UpdateProfile (SettingsController.cs:23) | Admin | UpsertStoreProfileRequest | StoreProfileResponse | ISettingsService | Cập nhật cấu hình cửa hàng |
 | GET | /api/v1/settings/stock-take-thresholds | SettingsController.GetStockTakeThresholds (SettingsController.cs:83) | Auth | None | StockTakeThresholdsResponse | ISettingsService | Lấy ngưỡng duyệt kiểm kê kho |
 | PUT | /api/v1/settings/stock-take-thresholds | SettingsController.UpdateStockTakeThresholds (SettingsController.cs:92) | Owner | StockTakeThresholdsRequest | object | ISettingsService | Cập nhật ngưỡng duyệt kiểm kê kho |
-| POST | /api/v1/shifts/open | ShiftsController.Open (ShiftsController.cs:24) | Auth | OpenShiftRequest | ShiftResponse | IShiftService | Mở ca làm việc |
+| POST | /api/v1/shifts/open | ShiftsController.Open (ShiftsController.cs:24) | Auth | OpenShiftRequest (counterId, posDeviceId optional) | ShiftResponse | IShiftService | Mở ca làm việc |
 | GET | /api/v1/shifts/current | ShiftsController.Current (ShiftsController.cs:32) | Auth | None | ShiftResponse | IShiftService | Lấy ca làm việc hiện tại |
 | GET | /api/v1/shifts/current/summary | ShiftsController.Summary (ShiftsController.cs:40) | Auth | None | ShiftSummaryResponse | IShiftService | Tóm tắt ca hiện tại |
 | POST | /api/v1/shifts/close | ShiftsController.Close (ShiftsController.cs:48) | Auth | CloseShiftRequest | ShiftResponse | IShiftService | Đóng ca làm việc |
-| GET | /api/v1/shifts | ShiftsController.Get (ShiftsController.cs:56) | Auth | None | List<ShiftResponse> | IShiftService | Danh sách ca làm việc |
+| GET | /api/v1/shifts | ShiftsController.Get (ShiftsController.cs:56) | Mgr/Admin | None | List<ShiftResponse> | IShiftService | Danh sách ca làm việc |
+| GET | /api/v1/counters | CountersController.List (CountersController.cs:23) | Auth | None | List<CounterResponse> | ICounterService | Danh sách quầy |
+| GET | /api/v1/counters/{id} | CountersController.GetById (CountersController.cs:32) | Auth | None | CounterResponse | ICounterService | Chi tiết quầy |
+| POST | /api/v1/counters | CountersController.Create (CountersController.cs:45) | Mgr/Admin | CreateCounterRequest | CounterResponse | ICounterService | Tạo quầy |
+| PUT | /api/v1/counters/{id} | CountersController.Update (CountersController.cs:60) | Mgr/Admin | UpdateCounterRequest | CounterResponse | ICounterService | Cập nhật quầy |
+| DELETE | /api/v1/counters/{id} | CountersController.Delete (CountersController.cs:78) | Mgr/Admin | None | void | ICounterService | Vô hiệu hóa quầy |
+| GET | /api/v1/pos-devices | PosDevicesController.List (PosDevicesController.cs:23) | Auth | None | List<PosDeviceResponse> | IPosDeviceService | Danh sách máy POS |
+| GET | /api/v1/pos-devices/{id} | PosDevicesController.GetById (PosDevicesController.cs:32) | Auth | None | PosDeviceResponse | IPosDeviceService | Chi tiết máy POS |
+| POST | /api/v1/pos-devices | PosDevicesController.Create (PosDevicesController.cs:45) | Mgr/Admin | CreatePosDeviceRequest | PosDeviceResponse | IPosDeviceService | Tạo máy POS |
+| PUT | /api/v1/pos-devices/{id} | PosDevicesController.Update (PosDevicesController.cs:63) | Mgr/Admin | UpdatePosDeviceRequest | PosDeviceResponse | IPosDeviceService | Cập nhật máy POS |
+| DELETE | /api/v1/pos-devices/{id} | PosDevicesController.Delete (PosDevicesController.cs:81) | Mgr/Admin | None | void | IPosDeviceService | Vô hiệu hóa máy POS |
 | GET | /api/v1/stock-ins | StockInsController.Get (StockInsController.cs:20) | Auth | None | List<StockInResponse> | IStockInService | Danh sách phiếu nhập kho |
 | GET | /api/v1/stock-ins/{id} | StockInsController.GetById (StockInsController.cs:28) | Auth | None | StockInResponse | IStockInService | Chi tiết phiếu nhập kho |
 | POST | /api/v1/stock-ins | StockInsController.Create (StockInsController.cs:36) | Auth | CreateStockInRequest | StockInResponse | IStockInService | Tạo phiếu nhập kho (OCR/nháp) |

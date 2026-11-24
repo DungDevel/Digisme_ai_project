@@ -35,7 +35,7 @@ public class ShiftsController : ControllerBase
     {
         try
         {
-            var result = await _shiftService.OpenShiftAsync(UserId, req.OpeningCash);
+            var result = await _shiftService.OpenShiftAsync(UserId, req.OpeningCash, req.CounterId, req.PosDeviceId);
             return StatusCode(201, result);
         }
         catch (BusinessRuleException ex)

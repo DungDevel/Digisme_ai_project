@@ -205,10 +205,19 @@ public record StockInResponse(
 );
 public record PagedStockInResponse(int Page, int PageSize, int Total, int TotalPages, List<StockInResponse> Items);
 
+// ── Counters & PosDevices ──
+public record CounterResponse(int Id, string Code, string Name, bool IsDefault, bool IsActive, DateTime CreatedAt);
+public record CreateCounterRequest(string Code, string Name, bool IsActive = true);
+public record UpdateCounterRequest(string Name, bool IsActive);
+
+public record PosDeviceResponse(int Id, int CounterId, string CounterName, string Code, string Name, bool IsActive, DateTime CreatedAt);
+public record CreatePosDeviceRequest(int CounterId, string Code, string Name, bool IsActive = true);
+public record UpdatePosDeviceRequest(int CounterId, string Name, bool IsActive);
+
 // ── Shifts (Sprint 3) ──
-public record OpenShiftRequest(decimal OpeningCash);
+public record OpenShiftRequest(decimal OpeningCash, int? CounterId = null, int? PosDeviceId = null);
 public record CloseShiftRequest(decimal CountedCash, decimal? CountedTransfer = null, Dictionary<int, int>? Denominations = null, string? Note = null);
-public record ShiftResponse(int Id, int UserId, string Username, DateTime StartedAt, DateTime? EndedAt, string Status, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Diff, decimal TransferSales, decimal? CountedTransfer, decimal? TransferDiff, string? DenominationsJson, string? Note);
+public record ShiftResponse(int Id, int UserId, string Username, int CounterId, string CounterName, int? PosDeviceId, DateTime StartedAt, DateTime? EndedAt, string Status, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Diff, decimal TransferSales, decimal? CountedTransfer, decimal? TransferDiff, string? DenominationsJson, string? Note);
 public record PagedShiftResponse(int Page, int PageSize, int Total, int TotalPages, List<ShiftResponse> Items);
 public record ShiftOrderBrief(int Id, string Code, decimal Total, string PaymentMethod, DateTime CreatedAt);
 public record ShiftSummaryResponse(

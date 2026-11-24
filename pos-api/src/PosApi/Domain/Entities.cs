@@ -199,6 +199,31 @@ public class SupplierDebt
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
+// ─────────────────────────── Counter & PosDevice ───────────────────────────
+
+public class Counter
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool IsDefault { get; set; } = false;
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public List<PosDevice> PosDevices { get; set; } = new();
+    public List<Shift> Shifts { get; set; } = new();
+}
+
+public class PosDevice
+{
+    public int Id { get; set; }
+    public int CounterId { get; set; }
+    public Counter Counter { get; set; } = null!;
+    public string Code { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 // ─────────────────────────── Shift ───────────────────────────
 
 public class Shift
@@ -206,6 +231,10 @@ public class Shift
     public int Id { get; set; }
     public int UserId { get; set; }
     public User User { get; set; } = null!;
+    public int CounterId { get; set; }
+    public Counter Counter { get; set; } = null!;
+    public int? PosDeviceId { get; set; }
+    public PosDevice? PosDevice { get; set; }
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? EndedAt { get; set; }
     public ShiftStatus Status { get; set; } = ShiftStatus.Open;
@@ -490,6 +519,8 @@ public class StoreSetting
     public decimal VatRatePercent { get; set; } = 10m;
     public decimal StockTakeAutoLimit { get; set; } = 200000m;
     public decimal StockTakeManagerLimit { get; set; } = 1000000m;
+    public int? MaxCounters { get; set; }
+    public int? MaxPosDevices { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 

@@ -47,6 +47,8 @@ public class AppDbContext : DbContext
     public DbSet<StockTake> StockTakes => Set<StockTake>();
     public DbSet<StockTakeItem> StockTakeItems => Set<StockTakeItem>();
     public DbSet<SupplierReturn> SupplierReturns => Set<SupplierReturn>();
+    public DbSet<Counter> Counters => Set<Counter>();
+    public DbSet<PosDevice> PosDevices => Set<PosDevice>();
     public DbSet<SupplierReturnItem> SupplierReturnItems => Set<SupplierReturnItem>();
     public DbSet<SupplierDebt> SupplierDebts => Set<SupplierDebt>();
     public DbSet<CashVoucher> CashVouchers => Set<CashVoucher>();
@@ -216,10 +218,29 @@ public class AppDbContext : DbContext
             e.HasIndex(x => x.CreatedAt);
         });
 
+        // ── Counter & PosDevice ──
+        mb.Entity<Counter>(e =>
+        {
+            e.HasIndex(x => x.Code).IsUnique();
+            e.HasIndex(x => x.IsDefault).IsUnique().HasFilter("\"IsDefault\" = true");
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(128);
+        });
+
+        mb.Entity<PosDevice>(e =>
+        {
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.HasOne(x => x.Counter).WithMany(x => x.PosDevices).HasForeignKey(x => x.CounterId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ── Shift ──
         mb.Entity<Shift>(e =>
         {
             e.HasOne(x => x.User).WithMany(x => x.Shifts).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Counter).WithMany(x => x.Shifts).HasForeignKey(x => x.CounterId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.PosDevice).WithMany().HasForeignKey(x => x.PosDeviceId).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.Status).HasConversion<int>();
             e.Property(x => x.OpeningCash).HasPrecision(18, 2);
             e.Property(x => x.ExpectedCash).HasPrecision(18, 2);

@@ -32,6 +32,8 @@ builder.Services.AddScoped<ICartService, CartService>();
 builder.Services.AddScoped<IReturnService, ReturnService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IShiftService, ShiftService>();
+builder.Services.AddScoped<ICounterService, CounterService>();
+builder.Services.AddScoped<IPosDeviceService, PosDeviceService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();

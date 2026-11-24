@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Dto;
@@ -7,7 +9,7 @@ namespace PosApi.Services;
 
 public interface IShiftService
 {
-    Task<ShiftResponse> OpenShiftAsync(int userId, decimal openingCash);
+    Task<ShiftResponse> OpenShiftAsync(int userId, decimal openingCash, int? counterId = null, int? posDeviceId = null);
     Task<ShiftResponse?> GetCurrentShiftAsync(int userId);
     Task<ShiftSummaryResponse> GetShiftSummaryAsync(int userId);
     Task<ShiftResponse> CloseShiftAsync(int userId, decimal countedCash, decimal? countedTransfer = null, Dictionary<int, int>? denominations = null, string? note = null);
@@ -27,31 +29,98 @@ public class ShiftService : IShiftService
         _log = log ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<ShiftService>.Instance;
     }
 
-    public async Task<ShiftResponse> OpenShiftAsync(int userId, decimal openingCash)
+    public async Task<ShiftResponse> OpenShiftAsync(int userId, decimal openingCash, int? counterId = null, int? posDeviceId = null)
     {
         if (openingCash < 0)
             throw new BusinessRuleException("Tiền mặt đầu ca không được âm");
 
-        var existingOpen = await _context.Shifts
+        Counter counter;
+        if (counterId.HasValue)
+        {
+            counter = await _context.Counters.FirstOrDefaultAsync(c => c.Id == counterId.Value)
+                ?? throw new KeyNotFoundException($"Không tìm thấy quầy {counterId.Value}");
+        }
+        else
+        {
+            counter = await _context.Counters.FirstOrDefaultAsync(c => c.IsDefault)
+                ?? throw new BusinessRuleException("Chưa có quầy mặc định — liên hệ quản trị");
+        }
+
+        if (!counter.IsActive)
+            throw new BusinessRuleException("Quầy đã bị vô hiệu hóa — không thể mở ca");
+
+        if (posDeviceId.HasValue)
+        {
+            var posDevice = await _context.PosDevices.FirstOrDefaultAsync(d => d.Id == posDeviceId.Value)
+                ?? throw new KeyNotFoundException($"Không tìm thấy máy POS {posDeviceId.Value}");
+
+            if (!posDevice.IsActive)
+                throw new BusinessRuleException("Máy POS đã bị vô hiệu hóa — không thể sử dụng");
+
+            if (posDevice.CounterId != counter.Id)
+                throw new BusinessRuleException("Máy POS không thuộc quầy đã chọn");
+        }
+
+        var existingUserOpen = await _context.Shifts
             .Include(s => s.User)
+            .Include(s => s.Counter)
             .FirstOrDefaultAsync(s => s.UserId == userId && s.Status == ShiftStatus.Open);
 
-        if (existingOpen != null)
+        if (existingUserOpen != null)
             throw new BusinessRuleException("Nhân viên đang có ca làm việc mở. Vui lòng đóng ca hiện tại trước khi mở ca mới.");
 
-        var shift = new Shift
+        var strategy = _context.Database.CreateExecutionStrategy();
+        Shift shift = null!;
+
+        await strategy.ExecuteAsync(async () =>
         {
-            UserId = userId,
-            OpeningCash = openingCash,
-            Status = ShiftStatus.Open,
-            StartedAt = DateTime.UtcNow
-        };
+            var existingTx = _context.Database.CurrentTransaction;
+            await using var tx = existingTx == null && _context.Database.IsRelational() ? await _context.Database.BeginTransactionAsync() : null;
 
-        _context.Shifts.Add(shift);
-        await _context.SaveChangesAsync();
+            if (_context.Database.IsRelational())
+            {
+                var conn = _context.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    await conn.OpenAsync();
 
-        var user = await _context.Users.FindAsync(userId);
-        var username = user?.Username ?? "";
+                using (var cmd = conn.CreateCommand() as NpgsqlCommand)
+                {
+                    cmd!.CommandText = "SELECT \"Id\" FROM \"Counters\" WHERE \"Id\" = @cid FOR UPDATE";
+                    if (_context.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
+                    {
+                        cmd.Transaction = npgTx;
+                    }
+                    cmd.Parameters.Add(new NpgsqlParameter("@cid", counter.Id));
+                    await cmd.ExecuteScalarAsync();
+                }
+            }
+
+            var counterHasOpen = await _context.Shifts
+                .AnyAsync(s => s.CounterId == counter.Id && s.Status == ShiftStatus.Open);
+            if (counterHasOpen)
+                throw new BusinessRuleException("Quầy đang có ca mở");
+
+            shift = new Shift
+            {
+                UserId = userId,
+                CounterId = counter.Id,
+                PosDeviceId = posDeviceId,
+                OpeningCash = openingCash,
+                Status = ShiftStatus.Open,
+                StartedAt = DateTime.UtcNow
+            };
+
+            _context.Shifts.Add(shift);
+            await _context.SaveChangesAsync();
+            if (tx != null)
+                await tx.CommitAsync();
+        });
+
+        shift.Counter = counter;
+        if (shift.User == null)
+            await _context.Entry(shift).Reference(s => s.User).LoadAsync();
+
+        var username = shift.User?.Username ?? "";
 
         try
         {
@@ -72,6 +141,7 @@ public class ShiftService : IShiftService
     {
         var shift = await _context.Shifts
             .Include(s => s.User)
+            .Include(s => s.Counter)
             .Include(s => s.Orders)
             .FirstOrDefaultAsync(s => s.UserId == userId && s.Status == ShiftStatus.Open);
 
@@ -84,6 +154,7 @@ public class ShiftService : IShiftService
     {
         var shift = await _context.Shifts
             .Include(s => s.User)
+            .Include(s => s.Counter)
             .Include(s => s.Orders)
             .FirstOrDefaultAsync(s => s.UserId == userId && s.Status == ShiftStatus.Open);
 
@@ -138,6 +209,7 @@ public class ShiftService : IShiftService
 
         var shift = await _context.Shifts
             .Include(s => s.User)
+            .Include(s => s.Counter)
             .Include(s => s.Orders)
             .FirstOrDefaultAsync(s => s.UserId == userId && s.Status == ShiftStatus.Open);
 
@@ -206,6 +278,7 @@ public class ShiftService : IShiftService
         var query = _context.Shifts
             .AsNoTracking()
             .Include(s => s.User)
+            .Include(s => s.Counter)
             .OrderByDescending(s => s.StartedAt);
 
         var total = await query.CountAsync();
@@ -217,5 +290,5 @@ public class ShiftService : IShiftService
     }
 
     private static ShiftResponse ToResponse(Shift s, string username) =>
-        new(s.Id, s.UserId, username, s.StartedAt, s.EndedAt, s.Status.ToString(), s.OpeningCash, s.ExpectedCash ?? 0m, s.CountedCash ?? 0m, s.Diff ?? 0m, s.TransferSales, s.CountedTransfer, s.TransferDiff, s.DenominationsJson, s.Note);
+        new(s.Id, s.UserId, username, s.CounterId, s.Counter?.Name ?? "Quầy mặc định", s.PosDeviceId, s.StartedAt, s.EndedAt, s.Status.ToString(), s.OpeningCash, s.ExpectedCash ?? 0m, s.CountedCash ?? 0m, s.Diff ?? 0m, s.TransferSales, s.CountedTransfer, s.TransferDiff, s.DenominationsJson, s.Note);
 }

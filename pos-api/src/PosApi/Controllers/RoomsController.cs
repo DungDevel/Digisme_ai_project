@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/rooms")]
-[Authorize]
+[Authorize(Policy = "AnyRole")]
 public class RoomsController : ControllerBase
 {
     private readonly IRoomService _service;

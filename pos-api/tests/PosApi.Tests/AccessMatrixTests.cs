@@ -101,21 +101,18 @@ public class AccessMatrixTests : IClassFixture<TestAppFactory>
         var baselinePath = FindBaselinePath();
         bool updateBaseline = Environment.GetEnvironmentVariable("UPDATE_ACCESS_BASELINE") == "1";
 
-        if (!File.Exists(baselinePath))
+        if (updateBaseline)
         {
-            if (updateBaseline)
+            var lines = new List<string> { "Method,Route,Anonymous,Cashier,Manager,Owner,Accountant,Note" };
+            foreach (var r in matrixRows)
             {
-                var lines = new List<string> { "Method,Route,Anonymous,Cashier,Manager,Owner,Accountant,Note" };
-                foreach (var r in matrixRows)
-                {
-                    lines.Add($"{r.Method},{r.Route},{r.Anonymous},{r.Cashier},{r.Manager},{r.Owner},{r.Accountant},{r.Note}");
-                }
-                File.WriteAllLines(baselinePath, lines);
+                lines.Add($"{r.Method},{r.Route},{r.Anonymous},{r.Cashier},{r.Manager},{r.Owner},{r.Accountant},{r.Note}");
             }
-            else
-            {
-                Assert.Fail("access-matrix.baseline.csv không tồn tại. Chạy với UPDATE_ACCESS_BASELINE=1 để tạo, rồi commit file này.");
-            }
+            File.WriteAllLines(baselinePath, lines);
+        }
+        else if (!File.Exists(baselinePath))
+        {
+            Assert.Fail("access-matrix.baseline.csv không tồn tại. Chạy với UPDATE_ACCESS_BASELINE=1 để tạo, rồi commit file này.");
         }
 
         var rawLines = File.ReadAllLines(baselinePath);

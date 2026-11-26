@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/tables")]
-[Authorize]
+[Authorize(Policy = "AnyRole")]
 public class TablesController : ControllerBase
 {
     private readonly ITableService _service;

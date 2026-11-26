@@ -264,7 +264,7 @@ public class AccessMatrixTests : IClassFixture<TestAppFactory>
         var meResp = await client.GetAsync("/api/v1/auth/me");
         Assert.Equal(HttpStatusCode.OK, meResp.StatusCode);
 
-        var bankResp = await client.GetAsync("/api/v1/bank-transactions");
+        var bankResp = await client.PostAsJsonAsync("/api/v1/bank-transactions/1/match", new { orderId = 1, note = "test" });
         Assert.Equal(HttpStatusCode.Forbidden, bankResp.StatusCode);
     }
 }

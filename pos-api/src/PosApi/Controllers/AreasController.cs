@@ -7,7 +7,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/areas")]
-[Authorize]
+[Authorize(Policy = "AnyRole")]
 public class AreasController : ControllerBase
 {
     private readonly IAreaService _service;

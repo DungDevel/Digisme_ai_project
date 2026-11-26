@@ -2,7 +2,7 @@ namespace PosApi.Domain;
 
 // ─────────────────────────── Enums ───────────────────────────
 
-public enum UserRole { Cashier = 0, Manager = 1 }
+public enum UserRole { Cashier = 0, Manager = 1, Accountant = 2 }
 
 public enum OrderStatus { Pending = 0, Completed = 1, Held = 2, Cancelled = 3, PartiallyReturned = 4 }
 

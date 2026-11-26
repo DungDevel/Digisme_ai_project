@@ -99,6 +99,8 @@ builder.Services.AddAuthorization(o =>
 {
     o.AddPolicy("ManagerOnly", p => p.RequireRole("Manager"));
     o.AddPolicy("AnyRole", p => p.RequireRole("Cashier", "Manager"));
+    o.AddPolicy("ManagerOrAccountant", p => p.RequireRole("Manager", "Accountant"));
+    o.AddPolicy("AllRoles", p => p.RequireRole("Cashier", "Manager", "Accountant"));
 });
 
 builder.Services.AddControllers();

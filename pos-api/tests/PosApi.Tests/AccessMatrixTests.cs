@@ -96,7 +96,7 @@ public class AccessMatrixTests : IClassFixture<TestAppFactory>
             matrixRows.Add((httpMethod, route, canAnon, canCashier, canManager, canOwner, canAccountant, note));
         }
 
-        Assert.Equal(143, matrixRows.Count);
+        Assert.Equal(144, matrixRows.Count);
 
         var baselinePath = FindBaselinePath();
         bool updateBaseline = Environment.GetEnvironmentVariable("UPDATE_ACCESS_BASELINE") == "1";

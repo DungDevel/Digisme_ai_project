@@ -447,3 +447,5 @@ public record IgnoreBankTransactionRequest(string Note);
 public record PagedBankTransactionResponse(int Page, int PageSize, int Total, int TotalPages, List<BankTransactionResponse> Items);
 
 
+public record CreateUserRequest(string Username, string FullName, string Email, string Password, UserRole Role);
+public record UserResponse(int Id, string Username, string FullName, string Email, UserRole Role, bool IsOwner, bool IsActive, DateTime CreatedAt);

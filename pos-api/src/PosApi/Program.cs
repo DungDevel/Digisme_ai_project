@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
@@ -7,6 +8,7 @@ using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Services;
 using PosApi.Hubs;
+using PosApi.Authorization;
 using PosApi;
 using System.Text;
 
@@ -57,6 +59,7 @@ builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IBankTransactionProvider, SepayProvider>();
 builder.Services.AddScoped<BankReconciliationService>();
+builder.Services.AddScoped<IAuthorizationHandler, OwnerRequirementHandler>();
 builder.Services.AddHostedService<SepayPollingService>();
 builder.Services.AddSignalR();
 
@@ -101,6 +104,7 @@ builder.Services.AddAuthorization(o =>
     o.AddPolicy("AnyRole", p => p.RequireRole("Cashier", "Manager"));
     o.AddPolicy("ManagerOrAccountant", p => p.RequireRole("Manager", "Accountant"));
     o.AddPolicy("AllRoles", p => p.RequireRole("Cashier", "Manager", "Accountant"));
+    o.AddPolicy("OwnerOnly", p => p.RequireRole("Manager").AddRequirements(new OwnerRequirement()));
 });
 
 builder.Services.AddControllers();

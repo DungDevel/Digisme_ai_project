@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -24,6 +25,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [Authorize(Policy = "OwnerOnly")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req)

@@ -112,6 +112,10 @@ public class ShiftService : IShiftService
 
             _context.Shifts.Add(shift);
             await _context.SaveChangesAsync();
+
+            await AssignPendingOrdersToNewShiftAsync(_context, shift.Id);
+            await _context.SaveChangesAsync();
+
             if (tx != null)
                 await tx.CommitAsync();
         });
@@ -161,23 +165,11 @@ public class ShiftService : IShiftService
         if (shift == null)
             throw new KeyNotFoundException("Không có ca làm việc nào đang mở");
 
-        decimal cashSales = shift.Orders
-            .Where(o => o.Status == OrderStatus.Completed && o.PaymentMethod == PaymentMethod.Cash)
-            .Sum(o => o.PaidAmount - o.Change);
-
-        decimal transferSales = shift.Orders
-            .Where(o => o.Status == OrderStatus.Completed && (o.PaymentMethod == PaymentMethod.VietQr || o.PaymentMethod == PaymentMethod.BankTransfer))
-            .Sum(o => o.Total);
-
         var cashVouchers = await _context.CashVouchers
             .Where(cv => cv.ShiftId == shift.Id && cv.Status == CashVoucherStatus.Confirmed)
             .ToListAsync();
 
-        decimal cashReceipts = cashVouchers.Where(cv => cv.Type == CashVoucherType.Receipt && cv.PaymentMethod == PaymentMethod.Cash).Sum(cv => cv.Amount);
-        decimal cashPayments = cashVouchers.Where(cv => cv.Type == CashVoucherType.Payment && cv.PaymentMethod == PaymentMethod.Cash).Sum(cv => cv.Amount);
-
-        decimal expectedCash = shift.OpeningCash + cashSales + cashReceipts - cashPayments;
-        decimal expectedTransfer = transferSales;
+        var metrics = CalculateShiftMetrics(shift, cashVouchers);
 
         return new ShiftSummaryResponse(
             shift.Id,
@@ -185,12 +177,12 @@ public class ShiftService : IShiftService
             shift.User?.Username ?? "",
             shift.StartedAt,
             shift.OpeningCash,
-            cashSales,
-            transferSales,
-            cashReceipts,
-            cashPayments,
-            expectedCash,
-            expectedTransfer,
+            metrics.cashSales,
+            metrics.transferSales,
+            metrics.cashReceipts,
+            metrics.cashPayments,
+            metrics.expectedCash,
+            metrics.expectedTransfer,
             shift.Orders.Count,
             shift.Orders.Select(o => new ShiftOrderBrief(o.Id, o.Code, o.Total, o.PaymentMethod.ToString(), o.CreatedAt)).ToList()
         );
@@ -216,26 +208,14 @@ public class ShiftService : IShiftService
         if (shift == null)
             throw new KeyNotFoundException("Không tìm thấy ca làm việc đang mở");
 
-        decimal cashSales = shift.Orders
-            .Where(o => o.Status == OrderStatus.Completed && o.PaymentMethod == PaymentMethod.Cash)
-            .Sum(o => o.PaidAmount - o.Change);
-
-        decimal transferSales = shift.Orders
-            .Where(o => o.Status == OrderStatus.Completed && (o.PaymentMethod == PaymentMethod.VietQr || o.PaymentMethod == PaymentMethod.BankTransfer))
-            .Sum(o => o.Total);
-
         var cashVouchers = await _context.CashVouchers
             .Where(cv => cv.ShiftId == shift.Id && cv.Status == CashVoucherStatus.Confirmed)
             .ToListAsync();
 
-        decimal cashReceipts = cashVouchers.Where(cv => cv.Type == CashVoucherType.Receipt && cv.PaymentMethod == PaymentMethod.Cash).Sum(cv => cv.Amount);
-        decimal cashPayments = cashVouchers.Where(cv => cv.Type == CashVoucherType.Payment && cv.PaymentMethod == PaymentMethod.Cash).Sum(cv => cv.Amount);
+        var metrics = CalculateShiftMetrics(shift, cashVouchers);
 
-        decimal expectedCash = shift.OpeningCash + cashSales + cashReceipts - cashPayments;
-        decimal diff = countedCash - expectedCash;
-
-        decimal expectedTransfer = transferSales;
-        decimal? transferDiff = countedTransfer.HasValue ? countedTransfer.Value - expectedTransfer : (decimal?)null;
+        decimal diff = countedCash - metrics.expectedCash;
+        decimal? transferDiff = countedTransfer.HasValue ? countedTransfer.Value - metrics.expectedTransfer : (decimal?)null;
 
         string? denominationsJson = denominations != null && denominations.Count > 0
             ? System.Text.Json.JsonSerializer.Serialize(denominations)
@@ -243,10 +223,10 @@ public class ShiftService : IShiftService
 
         shift.EndedAt = DateTime.UtcNow;
         shift.Status = ShiftStatus.Closed;
-        shift.ExpectedCash = expectedCash;
+        shift.ExpectedCash = metrics.expectedCash;
         shift.CountedCash = countedCash;
         shift.Diff = diff;
-        shift.TransferSales = transferSales;
+        shift.TransferSales = metrics.transferSales;
         shift.CountedTransfer = countedTransfer;
         shift.TransferDiff = transferDiff;
         shift.DenominationsJson = denominationsJson;
@@ -287,6 +267,80 @@ public class ShiftService : IShiftService
             .ToListAsync();
 
         return new PagedShiftResponse(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize), items);
+    }
+
+    private (decimal cashSales, decimal transferSales, decimal cashReceipts, decimal cashPayments, decimal expectedCash, decimal expectedTransfer) CalculateShiftMetrics(Shift shift, List<CashVoucher> cashVouchers)
+    {
+        decimal cashSales = shift.Orders
+            .Where(o => o.Status == OrderStatus.Completed && o.PaymentMethod == PaymentMethod.Cash)
+            .Sum(o => o.PaidAmount - o.Change);
+
+        decimal transferSales = shift.Orders
+            .Where(o => o.Status == OrderStatus.Completed && (o.PaymentMethod == PaymentMethod.VietQr || o.PaymentMethod == PaymentMethod.BankTransfer))
+            .Sum(o => o.Total);
+
+        decimal cashReceipts = cashVouchers.Where(cv => cv.Type == CashVoucherType.Receipt && cv.PaymentMethod == PaymentMethod.Cash).Sum(cv => cv.Amount);
+        decimal cashPayments = cashVouchers.Where(cv => cv.Type == CashVoucherType.Payment && cv.PaymentMethod == PaymentMethod.Cash).Sum(cv => cv.Amount);
+
+        decimal expectedCash = shift.OpeningCash + cashSales + cashReceipts - cashPayments;
+        decimal expectedTransfer = transferSales;
+
+        return (cashSales, transferSales, cashReceipts, cashPayments, expectedCash, expectedTransfer);
+    }
+
+    public static async Task AssignShiftOnCompletionAsync(AppDbContext db, Order order)
+    {
+        if (!order.ShiftId.HasValue) return;
+
+        var oldShift = await db.Shifts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == order.ShiftId.Value);
+
+        if (oldShift == null)
+        {
+            order.ShiftId = null;
+            return;
+        }
+
+        if (oldShift.Status == ShiftStatus.Open)
+        {
+            // a) Ca tạo đơn vẫn Open -> giữ nguyên ShiftId
+            return;
+        }
+
+        // b) Ca đó đã đóng -> gắn vào ca đang Open CÙNG Counter với ca cũ.
+        var openShiftSameCounter = await db.Shifts
+            .AsNoTracking()
+            .Where(s => s.CounterId == oldShift.CounterId && s.Status == ShiftStatus.Open)
+            .OrderByDescending(s => s.StartedAt)
+            .FirstOrDefaultAsync();
+
+        if (openShiftSameCounter != null)
+        {
+            order.ShiftId = openShiftSameCounter.Id;
+        }
+        else
+        {
+            // c) Không có ca Open phù hợp -> ShiftId = null (chờ)
+            order.ShiftId = null;
+        }
+    }
+
+    public static async Task AssignPendingOrdersToNewShiftAsync(AppDbContext db, int newShiftId)
+    {
+        var waitingOrders = await db.Orders
+            .Where(o => o.ShiftId == null && o.Status == OrderStatus.Completed && (o.PaymentMethod == PaymentMethod.VietQr || o.PaymentMethod == PaymentMethod.BankTransfer))
+            .ToListAsync();
+
+        foreach (var order in waitingOrders)
+        {
+            var hasValidTx = await db.BankTransactions
+                .AnyAsync(bt => bt.OrderId == order.Id && (bt.Status == BankTransactionStatus.Matched || bt.Status == BankTransactionStatus.Resolved));
+            if (hasValidTx)
+            {
+                order.ShiftId = newShiftId;
+            }
+        }
     }
 
     private static ShiftResponse ToResponse(Shift s, string username) =>

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 using PosApi.Data;
 using PosApi.Domain;
 using PosApi.Dto;
@@ -93,6 +95,18 @@ public class PaymentService : IPaymentService
             {
                 payment.Order.PaidAmount = payment.Amount;
                 payment.Order.Status = OrderStatus.Completed;
+                payment.Order.CompletedAt = DateTime.UtcNow;
+
+                await ShiftService.AssignShiftOnCompletionAsync(_context, payment.Order);
+
+                System.Data.Common.DbConnection? conn = null;
+                NpgsqlTransaction? npgTx = null;
+                if (_context.Database.IsRelational())
+                {
+                    conn = _context.Database.GetDbConnection();
+                    npgTx = _context.Database.CurrentTransaction?.GetDbTransaction() as NpgsqlTransaction;
+                }
+                await OrderService.EarnLoyaltyForCompletedOrderAsync(_context, payment.Order, conn, npgTx);
             }
         }
         if (!string.IsNullOrWhiteSpace(reference))

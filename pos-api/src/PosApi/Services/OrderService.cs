@@ -536,22 +536,8 @@ public class OrderService : IOrderService
             if (isCompleted && req.CustomerId is > 0)
             {
                 var npgTx = _db.Database.CurrentTransaction?.GetDbTransaction() as NpgsqlTransaction;
-                var loyalty = await GetOrCreateLoyaltyAsync(req.CustomerId.Value, conn, npgTx);
-                var goodsTotal = total - shippingFee;
-                int earnedPoints = (int)(goodsTotal / 1000m);
-                loyaltyEarned = earnedPoints;
-                loyalty.Points += earnedPoints;
-                loyalty.LifetimeSpend += goodsTotal;
-
-                order.LoyaltyEarned = earnedPoints;
-                _db.PointTransactions.Add(new PointTransaction
-                {
-                    LoyaltyAccount = loyalty,
-                    Order = order,
-                    Type = PointTransactionType.Earn,
-                    Points = earnedPoints,
-                    Note = $"Tích điểm đơn hàng {code}"
-                });
+                await EarnLoyaltyForCompletedOrderAsync(_db, order, conn, npgTx);
+                loyaltyEarned = order.LoyaltyEarned;
             }
 
             // ── Ledger + PosLog ──
@@ -660,39 +646,79 @@ public class OrderService : IOrderService
     private static int BaseUnitId(List<ProductUnit> units, int productId) =>
         units.FirstOrDefault(u => u.ProductId == productId && u.IsBase)?.UnitId ?? -1;
 
-    private async Task<LoyaltyAccount> GetOrCreateLoyaltyAsync(int customerId, System.Data.Common.DbConnection conn, NpgsqlTransaction? tx)
+    public static async Task<LoyaltyAccount> GetOrCreateLoyaltyAsync(AppDbContext db, int customerId, System.Data.Common.DbConnection? conn, NpgsqlTransaction? tx)
     {
-        // Lock loyalty account with FOR UPDATE (Lock order: Products -> LoyaltyAccounts, consistent with ReturnService)
-        using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
+        if (db.Database.IsRelational() && conn != null)
         {
-            lockCmd!.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
-            if (tx != null) lockCmd.Transaction = tx;
-            lockCmd.Parameters.Add(new NpgsqlParameter("@custid", customerId));
-            await lockCmd.ExecuteNonQueryAsync();
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
+            using var lockCmd = conn.CreateCommand() as NpgsqlCommand;
+            if (lockCmd != null)
+            {
+                lockCmd.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
+                if (tx != null) lockCmd.Transaction = tx;
+                lockCmd.Parameters.Add(new NpgsqlParameter("@custid", customerId));
+                await lockCmd.ExecuteNonQueryAsync();
+            }
         }
 
-        var existing = await _db.LoyaltyAccounts.FirstOrDefaultAsync(l => l.CustomerId == customerId);
+        var existing = await db.LoyaltyAccounts.FirstOrDefaultAsync(l => l.CustomerId == customerId);
         if (existing is not null) return existing;
 
         try
         {
             var loyalty = new LoyaltyAccount { CustomerId = customerId, Points = 0, Tier = "Silver", LifetimeSpend = 0 };
-            _db.LoyaltyAccounts.Add(loyalty);
-            await _db.SaveChangesAsync();
+            db.LoyaltyAccounts.Add(loyalty);
+            await db.SaveChangesAsync();
             return loyalty;
         }
         catch (DbUpdateException)
         {
-            _db.ChangeTracker.Clear();
-            using (var lockCmd = conn.CreateCommand() as NpgsqlCommand)
+            db.ChangeTracker.Clear();
+            if (db.Database.IsRelational() && conn != null)
             {
-                lockCmd!.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
-                if (tx != null) lockCmd.Transaction = tx;
-                lockCmd.Parameters.Add(new NpgsqlParameter("@custid", customerId));
-                await lockCmd.ExecuteNonQueryAsync();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    await conn.OpenAsync();
+                using var lockCmd = conn.CreateCommand() as NpgsqlCommand;
+                if (lockCmd != null)
+                {
+                    lockCmd.CommandText = "SELECT \"Id\" FROM \"LoyaltyAccounts\" WHERE \"CustomerId\" = @custid FOR UPDATE";
+                    if (tx != null) lockCmd.Transaction = tx;
+                    lockCmd.Parameters.Add(new NpgsqlParameter("@custid", customerId));
+                    await lockCmd.ExecuteNonQueryAsync();
+                }
             }
-            return await _db.LoyaltyAccounts.FirstAsync(l => l.CustomerId == customerId);
+            return await db.LoyaltyAccounts.FirstAsync(l => l.CustomerId == customerId);
         }
+    }
+
+    private async Task<LoyaltyAccount> GetOrCreateLoyaltyAsync(int customerId, System.Data.Common.DbConnection conn, NpgsqlTransaction? tx) =>
+        await GetOrCreateLoyaltyAsync(_db, customerId, conn, tx);
+
+    public static async Task EarnLoyaltyForCompletedOrderAsync(AppDbContext db, Order order, System.Data.Common.DbConnection? conn, NpgsqlTransaction? tx)
+    {
+        if (order.CustomerId is not > 0) return;
+        if (order.LoyaltyEarned > 0) return;
+
+        var hasEarnTx = await db.PointTransactions
+            .AnyAsync(pt => pt.OrderId == order.Id && pt.Type == PointTransactionType.Earn);
+        if (hasEarnTx) return;
+
+        var loyalty = await GetOrCreateLoyaltyAsync(db, order.CustomerId.Value, conn, tx);
+        var goodsTotal = order.Total - order.ShippingFee;
+        int earnedPoints = (int)(goodsTotal / 1000m);
+        loyalty.Points += earnedPoints;
+        loyalty.LifetimeSpend += goodsTotal;
+
+        order.LoyaltyEarned = earnedPoints;
+        db.PointTransactions.Add(new PointTransaction
+        {
+            LoyaltyAccount = loyalty,
+            Order = order,
+            Type = PointTransactionType.Earn,
+            Points = earnedPoints,
+            Note = $"Tích điểm đơn hàng {order.Code}"
+        });
     }
 
     /// <summary>

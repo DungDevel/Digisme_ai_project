@@ -14,12 +14,14 @@ public class BankReconciliationService
 {
     private readonly AppDbContext _context;
     private readonly ILogger<BankReconciliationService> _log;
+    private readonly INotificationService? _notificationService;
     private static readonly Regex OrderCodeRegex = new(@"INV[-\s]?(\d{8})[-\s]?(\d{4,})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    public BankReconciliationService(AppDbContext context, ILogger<BankReconciliationService> log)
+    public BankReconciliationService(AppDbContext context, ILogger<BankReconciliationService> log, INotificationService? notificationService = null)
     {
         _context = context;
         _log = log;
+        _notificationService = notificationService;
     }
 
     public async Task ProcessAsync(IEnumerable<IncomingBankTransaction> incomingTransactions)
@@ -161,13 +163,14 @@ public class BankReconciliationService
                 return;
             }
 
+            Payment? payment = null;
             var order = await _context.Orders
                 .Include(o => o.Payments)
                 .FirstOrDefaultAsync(o => o.Id == orderId.Value);
 
             if (order != null)
             {
-                CompleteOrder(order, tx.Amount, tx.ReferenceCode ?? tx.ExternalId);
+                payment = await CompleteOrderAsync(_context, order, tx.Amount, tx.ReferenceCode ?? tx.ExternalId);
             }
 
             bankTx.Status = BankTransactionStatus.Matched;
@@ -180,6 +183,18 @@ public class BankReconciliationService
 
             await _context.SaveChangesAsync();
             if (dbTx != null) await dbTx.CommitAsync();
+
+            try
+            {
+                if (_notificationService != null && payment != null && order != null)
+                {
+                    await _notificationService.NotifyPaymentConfirmedAsync(payment.Id, order.Id, order.Code, payment.Amount);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Failed to dispatch PaymentConfirmed notification for order {OrderId}", order?.Id);
+            }
         }
         catch
         {
@@ -188,11 +203,22 @@ public class BankReconciliationService
         }
     }
 
-    private static void CompleteOrder(Order order, decimal paidAmount, string reference)
+    private static async Task<Payment> CompleteOrderAsync(AppDbContext context, Order order, decimal paidAmount, string reference)
     {
         order.Status = OrderStatus.Completed;
         order.CompletedAt = DateTime.UtcNow;
         order.PaidAmount = paidAmount;
+
+        await ShiftService.AssignShiftOnCompletionAsync(context, order);
+
+        System.Data.Common.DbConnection? conn = null;
+        NpgsqlTransaction? npgTx = null;
+        if (context.Database.IsRelational())
+        {
+            conn = context.Database.GetDbConnection();
+            npgTx = context.Database.CurrentTransaction?.GetDbTransaction() as NpgsqlTransaction;
+        }
+        await OrderService.EarnLoyaltyForCompletedOrderAsync(context, order, conn, npgTx);
 
         var payment = order.Payments.FirstOrDefault(p => (p.Method == PaymentMethod.VietQr || p.Method == PaymentMethod.BankTransfer) && p.Status == PaymentStatus.Pending);
         if (payment != null)
@@ -203,7 +229,7 @@ public class BankReconciliationService
         }
         else
         {
-            order.Payments.Add(new Payment
+            payment = new Payment
             {
                 OrderId = order.Id,
                 Method = order.PaymentMethod,
@@ -211,8 +237,10 @@ public class BankReconciliationService
                 Reference = reference,
                 Status = PaymentStatus.Paid,
                 PaidAt = DateTime.UtcNow
-            });
+            };
+            order.Payments.Add(payment);
         }
+        return payment;
     }
 
     public async Task<BankTransactionResponse> ManualMatchAsync(int bankTransactionId, int orderId, string? note, int userId)
@@ -274,7 +302,7 @@ public class BankReconciliationService
                 throw new BusinessRuleException("Giao dịch lệch số tiền so với đơn hàng bắt buộc phải có ghi chú (note)");
             }
 
-            CompleteOrder(order, tx.Amount, tx.ReferenceCode ?? tx.ExternalId);
+            var payment = await CompleteOrderAsync(_context, order, tx.Amount, tx.ReferenceCode ?? tx.ExternalId);
 
             tx.Status = BankTransactionStatus.Resolved;
             tx.OrderId = order.Id;
@@ -286,6 +314,18 @@ public class BankReconciliationService
             await _context.SaveChangesAsync();
 
             if (dbTx != null) await dbTx.CommitAsync();
+
+            try
+            {
+                if (_notificationService != null)
+                {
+                    await _notificationService.NotifyPaymentConfirmedAsync(payment.Id, order.Id, order.Code, payment.Amount);
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Failed to dispatch PaymentConfirmed notification for order {OrderId}", order.Id);
+            }
 
             return ToResponse(tx, order.Code);
         }

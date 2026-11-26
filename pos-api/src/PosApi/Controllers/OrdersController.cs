@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/orders")]
-[Authorize(Policy = "AnyRole")]
+[Authorize(Policy = "AllRoles")]
 public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orders;
@@ -18,6 +18,7 @@ public class OrdersController : ControllerBase
     private int UserId => int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
 
     [HttpPost]
+    [Authorize(Policy = "AnyRole")]
     [ProducesResponseType(typeof(OrderCreatedResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateOrderRequest req)
@@ -53,6 +54,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = "AnyRole")]
     public async Task<IActionResult> Update(int id, [FromBody] OrderUpdateRequest req)
     {
         await _orders.UpdateOrderAsync(id, req, UserId);
@@ -60,6 +62,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id:int}/cancel")]
+    [Authorize(Policy = "AnyRole")]
     public async Task<IActionResult> Cancel(int id, [FromBody] string? reason)
     {
         await _orders.CancelOrderAsync(id, UserId, reason ?? "Hủy đơn hàng");
@@ -67,6 +70,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpPost("{id:int}/images")]
+    [Authorize(Policy = "AnyRole")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadImage(int id, [FromForm] string? imageType, IFormFile file)
     {
@@ -75,6 +79,7 @@ public class OrdersController : ControllerBase
     }
 
     [HttpDelete("images/{imageId:int}")]
+    [Authorize(Policy = "AnyRole")]
     public async Task<IActionResult> DeleteImage(int imageId)
     {
         await _orders.DeleteOrderImageAsync(imageId, UserId);

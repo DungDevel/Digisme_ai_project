@@ -10,7 +10,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/settings")]
-[Authorize(Policy = "AnyRole")]
+[Authorize(Policy = "AllRoles")]
 public class SettingsController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -81,6 +81,7 @@ public class SettingsController : ControllerBase
     }
 
     [HttpGet("stock-take-thresholds")]
+    [Authorize(Policy = "AnyRole")]
     public async Task<IActionResult> GetStockTakeThresholds()
     {
         var setting = await _db.StoreSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Id == 1);

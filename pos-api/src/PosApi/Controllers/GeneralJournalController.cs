@@ -7,7 +7,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/general-journal")]
-[Authorize]
+[Authorize(Policy = "AllRoles")]
 public class GeneralJournalController : ControllerBase
 {
     private readonly IGeneralJournalService _service;

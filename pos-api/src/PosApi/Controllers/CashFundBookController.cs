@@ -7,7 +7,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/cash-fund-book")]
-[Authorize]
+[Authorize(Policy = "AllRoles")]
 public class CashFundBookController : ControllerBase
 {
     private readonly ICashFundBookService _service;

@@ -15,7 +15,7 @@ public class BankReconciliationService
     private readonly AppDbContext _context;
     private readonly ILogger<BankReconciliationService> _log;
     private readonly INotificationService? _notificationService;
-    private static readonly Regex OrderCodeRegex = new(@"INV[-\s]?(\d{8})[-\s]?(\d{4,})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex OrderCodeRegex = new(@"INV[\-\s\.]?(\d{8})[\-\s\.]?(\d{4})(?!\d)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public BankReconciliationService(AppDbContext context, ILogger<BankReconciliationService> log, INotificationService? notificationService = null)
     {
@@ -393,12 +393,29 @@ public class BankReconciliationService
     public static string? ExtractOrderCode(string? content)
     {
         if (string.IsNullOrWhiteSpace(content)) return null;
-        var match = OrderCodeRegex.Match(content);
-        if (!match.Success) return null;
+        var matches = OrderCodeRegex.Matches(content);
+        string? foundCode = null;
 
-        var datePart = match.Groups[1].Value;
-        var numPart = match.Groups[2].Value.PadLeft(4, '0');
-        return $"INV-{datePart}-{numPart}";
+        foreach (Match match in matches)
+        {
+            if (!match.Success) continue;
+            var datePart = match.Groups[1].Value;
+            var numPart = match.Groups[2].Value;
+
+            if (!DateTime.TryParseExact(datePart, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out _))
+            {
+                continue;
+            }
+
+            var normalized = $"INV-{datePart}-{numPart.PadLeft(4, '0')}";
+            if (foundCode != null && foundCode != normalized)
+            {
+                return null;
+            }
+            foundCode = normalized;
+        }
+
+        return foundCode;
     }
 
     private static BankTransactionResponse ToResponse(BankTransaction x, string? orderCode) =>

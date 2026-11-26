@@ -33,6 +33,7 @@ services:
       Jwt__ResetCodeMinutes: "30"
       AiService__BaseUrl: "http://ai-service:8001"
       AiService__InternalToken: "ai-internal-dev-token"
+      SePay__BaseUrl: "https://userapi.sepay.vn"
       SePay__ApiToken: "${SEPAY_API_TOKEN:-}"
     ports:
       - "8000:8000"

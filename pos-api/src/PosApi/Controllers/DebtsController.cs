@@ -19,7 +19,7 @@ namespace PosApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/debts")]
-[Authorize(Policy = "AnyRole")]
+[Authorize(Policy = "AllRoles")]
 public class DebtsController : ControllerBase
 {
     private readonly AppDbContext _db;

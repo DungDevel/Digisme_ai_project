@@ -17,7 +17,7 @@ namespace PosApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/reports")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class ReportsController : ControllerBase
 {
     private readonly IReportService _reportService;

@@ -11,7 +11,7 @@ namespace PosApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/stock-ins")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class StockInsController : ControllerBase
 {
     private readonly IStockInService _stockInService;
@@ -56,6 +56,7 @@ public class StockInsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "ManagerOnly")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadInvoice(IFormFile file)
     {
@@ -86,6 +87,7 @@ public class StockInsController : ControllerBase
     }
 
     [HttpPost("manual")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(StockInResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateManual([FromBody] StockInCreateRequest req)
     {
@@ -109,6 +111,7 @@ public class StockInsController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(StockInResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateDraft(int id, [FromBody] StockInUpdateRequest req)
     {
@@ -132,6 +135,7 @@ public class StockInsController : ControllerBase
     }
 
     [HttpPut("{id:int}/items")]
+    [Authorize(Policy = "ManagerOnly")]
     public async Task<IActionResult> UpdateItems(int id, [FromBody] List<StockInItemRequest> items)
     {
         try
@@ -150,6 +154,7 @@ public class StockInsController : ControllerBase
     }
 
     [HttpPost("{id:int}/confirm")]
+    [Authorize(Policy = "ManagerOnly")]
     public async Task<IActionResult> Confirm(int id, [FromBody] ConfirmStockInRequestDto? body)
     {
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
@@ -196,6 +201,7 @@ public class StockInsController : ControllerBase
     }
 
     [HttpPost("{id:int}/cancel")]
+    [Authorize(Policy = "ManagerOnly")]
     public async Task<IActionResult> Cancel(int id)
     {
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
@@ -218,6 +224,7 @@ public class StockInsController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = "ManagerOnly")]
     public async Task<IActionResult> DeleteOrReject(int id)
     {
         var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);

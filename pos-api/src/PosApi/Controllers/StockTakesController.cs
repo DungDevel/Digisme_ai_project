@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/stock-takes")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class StockTakesController : ControllerBase
 {
     private readonly IStockTakeService _service;
@@ -41,6 +41,7 @@ public class StockTakesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(StockTakeResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] StockTakeCreateRequest req)
     {
@@ -50,6 +51,7 @@ public class StockTakesController : ControllerBase
     }
 
     [HttpPost("{id:int}/confirm")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(StockTakeResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Confirm(int id)
     {
@@ -59,6 +61,7 @@ public class StockTakesController : ControllerBase
     }
 
     [HttpPost("{id:int}/cancel")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(StockTakeResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Cancel(int id)
     {

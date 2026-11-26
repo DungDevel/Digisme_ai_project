@@ -14,7 +14,7 @@ namespace PosApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/inventory")]
-[Authorize(Policy = "AnyRole")]
+[Authorize(Policy = "AllRoles")]
 public class InventoryController : ControllerBase
 {
     private readonly IInventoryService _inventory;

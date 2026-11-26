@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/supplier-returns")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class SupplierReturnsController : ControllerBase
 {
     private readonly ISupplierReturnService _service;
@@ -42,6 +42,7 @@ public class SupplierReturnsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(SupplierReturnResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] SupplierReturnCreateRequest req)
     {
@@ -51,6 +52,7 @@ public class SupplierReturnsController : ControllerBase
     }
 
     [HttpPost("{id:int}/confirm")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(SupplierReturnResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Confirm(int id)
     {
@@ -60,6 +62,7 @@ public class SupplierReturnsController : ControllerBase
     }
 
     [HttpPost("{id:int}/cancel")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(SupplierReturnResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Cancel(int id)
     {

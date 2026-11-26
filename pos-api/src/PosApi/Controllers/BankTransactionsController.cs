@@ -10,7 +10,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/bank-transactions")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class BankTransactionsController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -74,6 +74,7 @@ public class BankTransactionsController : ControllerBase
     }
 
     [HttpPost("{id:int}/match")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(BankTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -95,6 +96,7 @@ public class BankTransactionsController : ControllerBase
     }
 
     [HttpPost("{id:int}/ignore")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(BankTransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

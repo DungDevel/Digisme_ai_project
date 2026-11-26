@@ -14,7 +14,7 @@ namespace PosApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/returns")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class ReturnsController : ControllerBase
 {
     private readonly IReturnService _returns;
@@ -25,6 +25,7 @@ public class ReturnsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "ManagerOnly")]
     public async Task<IActionResult> Create([FromBody] ReturnRequest req)
     {
         // Lấy UserId từ Token

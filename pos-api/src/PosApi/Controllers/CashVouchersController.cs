@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/cash-vouchers")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class CashVouchersController : ControllerBase
 {
     private readonly ICashVoucherService _service;
@@ -52,6 +52,7 @@ public class CashVouchersController : ControllerBase
     }
 
     [HttpPost("{id:int}/confirm")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(CashVoucherResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Confirm(int id)
     {
@@ -61,6 +62,7 @@ public class CashVouchersController : ControllerBase
     }
 
     [HttpPost("{id:int}/cancel")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(CashVoucherResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Cancel(int id)
     {

@@ -7,7 +7,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/products/{productId:int}/recipes")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class RecipesController : ControllerBase
 {
     private readonly IProductRecipeService _service;
@@ -26,6 +26,7 @@ public class RecipesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(List<ProductRecipeResponse>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Upsert(int productId, [FromBody] ProductRecipeUpsertRequest req)
     {

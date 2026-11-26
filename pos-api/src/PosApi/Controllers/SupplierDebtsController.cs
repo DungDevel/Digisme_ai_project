@@ -8,7 +8,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/supplier-debts")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class SupplierDebtsController : ControllerBase
 {
     private readonly ISupplierDebtService _service;
@@ -31,6 +31,7 @@ public class SupplierDebtsController : ControllerBase
     }
 
     [HttpPost("{id:int}/pay")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(PaySupplierDebtResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Pay(int id, [FromBody] PaySupplierDebtRequest req)
     {
@@ -59,6 +60,7 @@ public class SupplierDebtsController : ControllerBase
     }
 
     [HttpPost("recalculate")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(RecalculateSupplierDebtResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Recalculate([FromBody] RecalculateSupplierDebtRequest req)
     {

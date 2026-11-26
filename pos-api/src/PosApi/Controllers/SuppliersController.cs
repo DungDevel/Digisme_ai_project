@@ -12,7 +12,7 @@ namespace PosApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/suppliers")]
-[Authorize(Policy = "ManagerOnly")]
+[Authorize(Policy = "ManagerOrAccountant")]
 public class SuppliersController : ControllerBase
 {
     private readonly ISupplierService _supplierService;
@@ -41,6 +41,7 @@ public class SuppliersController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(SupplierResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateSupplier([FromBody] SupplierCreateRequest req)
     {
@@ -57,6 +58,7 @@ public class SuppliersController : ControllerBase
     }
 
     [HttpPut("{id:int}")]
+    [Authorize(Policy = "ManagerOnly")]
     [ProducesResponseType(typeof(SupplierResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateSupplier(int id, [FromBody] SupplierUpdateRequest req)
     {
@@ -75,6 +77,7 @@ public class SuppliersController : ControllerBase
     }
 
     [HttpDelete("{id:int}")]
+    [Authorize(Policy = "ManagerOnly")]
     public async Task<IActionResult> DeleteSupplier(int id)
     {
         var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);

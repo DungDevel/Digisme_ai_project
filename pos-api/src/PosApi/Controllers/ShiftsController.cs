@@ -16,7 +16,7 @@ namespace PosApi.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/shifts")]
-[Authorize(Policy = "AnyRole")]
+[Authorize(Policy = "AllRoles")]
 public class ShiftsController : ControllerBase
 {
     private readonly IShiftService _shiftService;
@@ -29,6 +29,7 @@ public class ShiftsController : ControllerBase
     private int UserId => int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)!.Value);
 
     [HttpPost("open")]
+    [Authorize(Policy = "AnyRole")]
     [ProducesResponseType(typeof(ShiftResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Open([FromBody] OpenShiftRequest req)
@@ -45,6 +46,7 @@ public class ShiftsController : ControllerBase
     }
 
     [HttpGet("current")]
+    [Authorize(Policy = "AnyRole")]
     [ProducesResponseType(typeof(ShiftResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Current()
@@ -56,6 +58,7 @@ public class ShiftsController : ControllerBase
     }
 
     [HttpGet("current/summary")]
+    [Authorize(Policy = "AnyRole")]
     [ProducesResponseType(typeof(ShiftSummaryResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> CurrentSummary()
@@ -72,6 +75,7 @@ public class ShiftsController : ControllerBase
     }
 
     [HttpPost("close")]
+    [Authorize(Policy = "AnyRole")]
     [ProducesResponseType(typeof(ShiftResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -93,7 +97,7 @@ public class ShiftsController : ControllerBase
     }
 
     [HttpGet]
-    [Authorize(Policy = "ManagerOnly")]
+    [Authorize(Policy = "ManagerOrAccountant")]
     [ProducesResponseType(typeof(PagedShiftResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> List([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {

@@ -7,7 +7,7 @@ namespace PosApi.Controllers;
 
 [ApiController]
 [Route("api/v1/warehouse-stocks")]
-[Authorize]
+[Authorize(Policy = "AllRoles")]
 public class WarehouseStocksController : ControllerBase
 {
     private readonly IWarehouseStockService _service;

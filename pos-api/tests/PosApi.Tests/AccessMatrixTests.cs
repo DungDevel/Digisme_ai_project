@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PosApi.Domain;
 using PosApi.Dto;
@@ -228,19 +229,43 @@ public class AccessMatrixTests : IClassFixture<TestAppFactory>
     [Fact]
     public async Task Accountant_Cannot_Be_Registered()
     {
-        var client = _factory.CreateClient();
-        var resp = await client.PostAsJsonAsync("/api/v1/auth/register", new
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Data.AppDbContext>();
+        var idsBefore = await db.Users.Select(u => u.Id).ToListAsync();
+
+        var ownerUser = new User
         {
-            username = "acc_reg_" + Guid.NewGuid().ToString("N").Substring(0, 4),
-            password = "Password123",
-            email = "acc@test.com",
-            role = "Accountant"
-        });
-        if (resp.IsSuccessStatusCode)
+            Username = "owner_reg_" + Guid.NewGuid().ToString("N").Substring(0, 4),
+            FullName = "Owner Reg",
+            Email = Guid.NewGuid().ToString("N").Substring(0, 6) + "@test.com",
+            PasswordHash = Hashing.Hash("Password123"),
+            Role = UserRole.Manager,
+            IsOwner = true
+        };
+        db.Users.Add(ownerUser);
+        await db.SaveChangesAsync();
+
+        try
         {
+            var client = _factory.CreateClient();
+            var ticketService = _factory.Services.GetRequiredService<ITicketService>();
+            var token = ticketService.IssueAccessToken(ownerUser);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            string regUsername = "reg_test_" + Guid.NewGuid().ToString("N").Substring(0, 4);
+            var resp = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(regUsername, "Reg Test", regUsername + "@test.com", "Password123"));
+
+            Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
             var authRes = await resp.Content.ReadFromJsonAsync<AuthResponse>();
             Assert.NotNull(authRes);
             Assert.Equal(UserRole.Cashier, authRes.Role);
+        }
+        finally
+        {
+            var usersToRemove = await db.Users.Where(u => !idsBefore.Contains(u.Id)).ToListAsync();
+            db.Users.RemoveRange(usersToRemove);
+            await db.SaveChangesAsync();
+            Assert.Equal(idsBefore.Count, await db.Users.CountAsync());
         }
     }
 

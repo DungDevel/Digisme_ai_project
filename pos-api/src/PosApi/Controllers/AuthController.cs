@@ -78,19 +78,24 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
-        // Không tiết lộ email có tồn tại hay không — luôn trả 200
+
+        if (!_jwt.ExposeResetCode)
+        {
+            const string genericMsg = "Nếu email tồn tại, mã đặt lại đã được tạo.";
+            return Ok(new ForgotPasswordResponse(genericMsg, _jwt.ResetCodeMinutes));
+        }
+
         if (user is null)
             return Ok(new ForgotPasswordResponse("000000", _jwt.ResetCodeMinutes));
 
-        // Hủy các mã cũ chưa dùng
         var stale = _db.PasswordResetCodes.Where(c => c.UserId == user.Id && c.UsedAt == null).ToList();
         _db.PasswordResetCodes.RemoveRange(stale);
 
-        var (plain, hashed) = _tickets.GenerateResetCode();
+        var (plain, hashedCode) = _tickets.GenerateResetCode();
         _db.PasswordResetCodes.Add(new PasswordResetCode
         {
             UserId = user.Id,
-            CodeHash = hashed,
+            CodeHash = hashedCode,
             ExpiresAt = DateTime.UtcNow.AddMinutes(_jwt.ResetCodeMinutes)
         });
         await _db.SaveChangesAsync();
@@ -108,13 +113,16 @@ public class AuthController : ControllerBase
             return BadRequest(new { error = "Code bắt buộc; mật khẩu mới tối thiểu 8 ký tự" });
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
-        if (user is null) return BadRequest(new { error = "Email không tồn tại" });
+        PasswordResetCode? code = null;
+        if (user is not null)
+        {
+            code = await _db.PasswordResetCodes
+                .Where(c => c.UserId == user.Id && c.UsedAt == null && c.ExpiresAt > DateTime.UtcNow)
+                .OrderByDescending(c => c.CreatedAt)
+                .FirstOrDefaultAsync();
+        }
 
-        var code = await _db.PasswordResetCodes
-            .Where(c => c.UserId == user.Id && c.UsedAt == null && c.ExpiresAt > DateTime.UtcNow)
-            .OrderByDescending(c => c.CreatedAt)
-            .FirstOrDefaultAsync();
-        if (code is null || code.CodeHash != Hashing.Hash(req.Code))
+        if (user is null || code is null || code.CodeHash != Hashing.Hash(req.Code))
             return BadRequest(new { error = "Mã không hợp lệ hoặc đã hết hạn" });
 
         user.PasswordHash = Hashing.Hash(req.NewPassword);
@@ -133,6 +141,37 @@ public class AuthController : ControllerBase
         var name = User.Identity?.Name;
         var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
         return Ok(new { id = idClaim, username = name, fullName = User.FindFirst("full_name")?.Value, role });
+    }
+
+    [HttpPost("change-password")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
+    {
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdStr, out int userId))
+            return Unauthorized();
+
+        var user = await _db.Users.FindAsync(userId);
+        if (user is null)
+            return Unauthorized();
+
+        if (user.PasswordHash != Hashing.Hash(req.CurrentPassword))
+            return BadRequest(new { error = "Mật khẩu hiện tại không đúng" });
+
+        if (req.CurrentPassword == req.NewPassword || user.PasswordHash == Hashing.Hash(req.NewPassword))
+            return BadRequest(new { error = "Mật khẩu mới phải khác mật khẩu hiện tại" });
+
+        var (valid, error) = PasswordPolicy.Validate(req.NewPassword);
+        if (!valid)
+            return BadRequest(new { error });
+
+        user.PasswordHash = Hashing.Hash(req.NewPassword);
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Đổi mật khẩu thành công" });
     }
 
     private AuthResponse ToAuthResponse(User user)

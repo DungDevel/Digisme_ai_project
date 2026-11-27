@@ -71,4 +71,24 @@ public class UsersController : ControllerBase
 
         return StatusCode(StatusCodes.Status201Created, response);
     }
+
+    [HttpPost("{id:int}/reset-password")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ResetPassword(int id, [FromBody] ResetUserPasswordRequest req)
+    {
+        var targetUser = await _db.Users.FindAsync(id);
+        if (targetUser is null)
+            return NotFound(new { error = "Không tìm thấy người dùng" });
+
+        var (valid, error) = PasswordPolicy.Validate(req.NewPassword);
+        if (!valid)
+            return BadRequest(new { error });
+
+        targetUser.PasswordHash = Hashing.Hash(req.NewPassword);
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Đặt lại mật khẩu thành công" });
+    }
 }

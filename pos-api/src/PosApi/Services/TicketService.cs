@@ -15,6 +15,7 @@ public class JwtOptions
     public string SecretKey { get; set; } = "";
     public int AccessTokenMinutes { get; set; } = 480;
     public int ResetCodeMinutes { get; set; } = 30;
+    public bool ExposeResetCode { get; set; } = false;
 }
 
 public interface ITicketService

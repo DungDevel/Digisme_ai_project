@@ -78,19 +78,24 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
-        // Không tiết lộ email có tồn tại hay không — luôn trả 200
+
+        if (!_jwt.ExposeResetCode)
+        {
+            const string genericMsg = "Nếu email tồn tại, mã đặt lại đã được tạo.";
+            return Ok(new ForgotPasswordResponse(genericMsg, _jwt.ResetCodeMinutes));
+        }
+
         if (user is null)
             return Ok(new ForgotPasswordResponse("000000", _jwt.ResetCodeMinutes));
 
-        // Hủy các mã cũ chưa dùng
         var stale = _db.PasswordResetCodes.Where(c => c.UserId == user.Id && c.UsedAt == null).ToList();
         _db.PasswordResetCodes.RemoveRange(stale);
 
-        var (plain, hashed) = _tickets.GenerateResetCode();
+        var (plain, hashedCode) = _tickets.GenerateResetCode();
         _db.PasswordResetCodes.Add(new PasswordResetCode
         {
             UserId = user.Id,
-            CodeHash = hashed,
+            CodeHash = hashedCode,
             ExpiresAt = DateTime.UtcNow.AddMinutes(_jwt.ResetCodeMinutes)
         });
         await _db.SaveChangesAsync();
@@ -108,13 +113,16 @@ public class AuthController : ControllerBase
             return BadRequest(new { error = "Code bắt buộc; mật khẩu mới tối thiểu 8 ký tự" });
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == req.Email);
-        if (user is null) return BadRequest(new { error = "Email không tồn tại" });
+        PasswordResetCode? code = null;
+        if (user is not null)
+        {
+            code = await _db.PasswordResetCodes
+                .Where(c => c.UserId == user.Id && c.UsedAt == null && c.ExpiresAt > DateTime.UtcNow)
+                .OrderByDescending(c => c.CreatedAt)
+                .FirstOrDefaultAsync();
+        }
 
-        var code = await _db.PasswordResetCodes
-            .Where(c => c.UserId == user.Id && c.UsedAt == null && c.ExpiresAt > DateTime.UtcNow)
-            .OrderByDescending(c => c.CreatedAt)
-            .FirstOrDefaultAsync();
-        if (code is null || code.CodeHash != Hashing.Hash(req.Code))
+        if (user is null || code is null || code.CodeHash != Hashing.Hash(req.Code))
             return BadRequest(new { error = "Mã không hợp lệ hoặc đã hết hạn" });
 
         user.PasswordHash = Hashing.Hash(req.NewPassword);

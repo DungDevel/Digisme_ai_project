@@ -449,3 +449,5 @@ public record PagedBankTransactionResponse(int Page, int PageSize, int Total, in
 
 public record CreateUserRequest(string Username, string FullName, string Email, string Password, UserRole Role);
 public record UserResponse(int Id, string Username, string FullName, string Email, UserRole Role, bool IsOwner, bool IsActive, DateTime CreatedAt);
+public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+public record ResetUserPasswordRequest(string NewPassword);

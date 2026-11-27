@@ -143,6 +143,37 @@ public class AuthController : ControllerBase
         return Ok(new { id = idClaim, username = name, fullName = User.FindFirst("full_name")?.Value, role });
     }
 
+    [HttpPost("change-password")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
+    {
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!int.TryParse(userIdStr, out int userId))
+            return Unauthorized();
+
+        var user = await _db.Users.FindAsync(userId);
+        if (user is null)
+            return Unauthorized();
+
+        if (user.PasswordHash != Hashing.Hash(req.CurrentPassword))
+            return BadRequest(new { error = "Mật khẩu hiện tại không đúng" });
+
+        if (req.CurrentPassword == req.NewPassword || user.PasswordHash == Hashing.Hash(req.NewPassword))
+            return BadRequest(new { error = "Mật khẩu mới phải khác mật khẩu hiện tại" });
+
+        var (valid, error) = PasswordPolicy.Validate(req.NewPassword);
+        if (!valid)
+            return BadRequest(new { error });
+
+        user.PasswordHash = Hashing.Hash(req.NewPassword);
+        await _db.SaveChangesAsync();
+
+        return Ok(new { message = "Đổi mật khẩu thành công" });
+    }
+
     private AuthResponse ToAuthResponse(User user)
     {
         var token = _tickets.IssueAccessToken(user);

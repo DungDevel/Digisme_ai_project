@@ -105,6 +105,7 @@ builder.Services.AddAuthorization(o =>
     o.AddPolicy("ManagerOrAccountant", p => p.RequireRole("Manager", "Accountant"));
     o.AddPolicy("AllRoles", p => p.RequireRole("Cashier", "Manager", "Accountant"));
     o.AddPolicy("OwnerOnly", p => p.RequireRole("Manager").AddRequirements(new OwnerRequirement()));
+    o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
 });
 
 builder.Services.AddControllers();

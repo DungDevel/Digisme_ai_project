@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -22,6 +23,7 @@ public class HealthController : ControllerBase
 
     /// Liveness: API sống là đủ
     [HttpGet]
+    [AllowAnonymous]
     public IActionResult Live()
     {
         return Ok(new { status = "ok", service = "pos-api", version = "0.1.0-phase0", time = DateTime.UtcNow });
@@ -29,6 +31,7 @@ public class HealthController : ControllerBase
 
     /// Readiness: kiểm tra DB + ai-service
     [HttpGet("ready")]
+    [AllowAnonymous]
     public async Task<IActionResult> Ready()
     {
         var dbOk = true;

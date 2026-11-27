@@ -21,6 +21,7 @@ public class ProductsController : ControllerBase
         : 1;
 
     [HttpGet("barcode/{code}")]
+    [Authorize(Policy = "AllRoles")]
     [ProducesResponseType(typeof(ProductLookupResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> ByBarcode(string code)
@@ -32,6 +33,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = "AllRoles")]
     [ProducesResponseType(typeof(PagedProductResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> Search(
         [FromQuery] string? q,

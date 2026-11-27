@@ -122,6 +122,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpGet("me")]
+    [Authorize(Policy = "AllRoles")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult Me()
     {

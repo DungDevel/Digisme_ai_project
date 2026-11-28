@@ -55,6 +55,30 @@ public class StockInService : IStockInService
     private static decimal Round3(decimal val) => Math.Round(val, 3, MidpointRounding.AwayFromZero);
     private static decimal RoundMoney(decimal val) => Math.Round(val, 0, MidpointRounding.AwayFromZero);
 
+    /// <summary>
+    /// PHNK-yyyymmdd-nnnn: row trong invoice_day_counter được khóa và cập nhật bằng INSERT ... ON CONFLICT DO UPDATE,
+    /// với key "S" + yyyyMMdd (9 ký tự, không trùng với khóa "yyyy-MM-dd" của OrderService).
+    /// </summary>
+    private async Task<string> NextStockInCodeAsync()
+    {
+        var now = DateTime.UtcNow;
+        var conn = _db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await conn.OpenAsync();
+        using var cmd = conn.CreateCommand() as NpgsqlCommand;
+        cmd!.CommandText = "INSERT INTO \"invoice_day_counter\" (\"Day\", \"N\") VALUES (@day, 1) " +
+                           "ON CONFLICT (\"Day\") DO UPDATE SET \"N\" = \"invoice_day_counter\".\"N\" + 1 " +
+                           "RETURNING \"invoice_day_counter\".\"N\"";
+        if (_db.Database.CurrentTransaction?.GetDbTransaction() is NpgsqlTransaction npgTx)
+        {
+            cmd.Transaction = npgTx;
+        }
+        var dayKey = "S" + now.ToString("yyyyMMdd");
+        cmd.Parameters.Add(new NpgsqlParameter("@day", dayKey));
+        var n = (int)(await cmd.ExecuteScalarAsync())!;
+        return $"PHNK-{now:yyyyMMdd}-{n:D4}";
+    }
+
     private async Task<int> ResolveWarehouseIdAsync(int? requestedWarehouseId)
     {
         if (requestedWarehouseId.HasValue && requestedWarehouseId.Value > 0)
@@ -194,7 +218,7 @@ public class StockInService : IStockInService
         if (req.PaidAmount < 0 || req.PaidAmount > total)
             throw new BusinessRuleException("Số tiền đã trả lúc nhập không hợp lệ (phải từ 0 đến tổng tiền)");
 
-        var code = $"PHNK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
+        var code = await NextStockInCodeAsync();
 
         var stockIn = new StockIn
         {
@@ -392,7 +416,7 @@ public class StockInService : IStockInService
         }
         else
         {
-            var code = $"PHNK-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N").Substring(0, 4).ToUpper()}";
+            var code = await NextStockInCodeAsync();
             stockIn = new StockIn
             {
                 Code = code,

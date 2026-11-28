@@ -881,4 +881,169 @@ public class StockInServiceTests
 
         await tx.RollbackAsync();
     }
+
+    [Fact]
+    public async Task StockInCode_DailyCounter_SequentialAndFormat()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        var logger = new Mock<ILogger<StockInService>>();
+        var service = new StockInService(context, logger.Object);
+
+        try
+        {
+            var cat = new Category { Name = "Counter Cat " + Guid.NewGuid() };
+            context.Categories.Add(cat);
+            await context.SaveChangesAsync();
+
+            var product = new Product { Name = "Prod Counter", Barcode = "CNT-" + Guid.NewGuid().ToString("N").Substring(0, 6), CategoryId = cat.Id, CurrentStock = 10m, IsActive = true };
+            var wh = new Warehouse { Code = "WH-" + Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper(), Name = "Kho Counter", IsDefault = false, IsActive = true };
+            context.Products.Add(product);
+            context.Warehouses.Add(wh);
+            await context.SaveChangesAsync();
+            context.WarehouseStocks.Add(new WarehouseStock { WarehouseId = wh.Id, ProductId = product.Id, Stock = 10m });
+            var invoice = new SupplierInvoice { Status = SupplierInvoiceStatus.PendingReview, CreatedBy = 1 };
+            context.SupplierInvoices.Add(invoice);
+            await context.SaveChangesAsync();
+
+            // a) Two consecutive draft creations
+            var createReq = new StockInCreateRequest(wh.Id, null, "Sup", "Note", new List<StockInItemRequest> { new(product.Id, 1m, 100m) }, 0m);
+            var draft1 = await service.CreateStockInDraftAsync(1, createReq);
+            var draft2 = await service.CreateStockInDraftAsync(1, createReq);
+
+            Assert.Matches(@"^PHNK-\d{8}-\d{4}$", draft1.Code);
+            Assert.Matches(@"^PHNK-\d{8}-\d{4}$", draft2.Code);
+
+            var parts1 = draft1.Code.Split('-');
+            var parts2 = draft2.Code.Split('-');
+            Assert.Equal(parts1[1], parts2[1]); // same date
+            int n1 = int.Parse(parts1[2]);
+            int n2 = int.Parse(parts2[2]);
+            Assert.Equal(n1 + 1, n2);
+
+            // b) Direct confirmation route (line 395)
+            var confirmReq = new ConfirmStockInRequest(invoice.Id, new List<StockInItemRequest> { new(product.Id, 1m, 100m) }, "Sup", "Note");
+            var confirmed = await service.ConfirmStockInAsync(1, confirmReq, "idem-counter-1");
+            Assert.Matches(@"^PHNK-\d{8}-\d{4}$", confirmed.Code);
+            var partsConf = confirmed.Code.Split('-');
+            int nConf = int.Parse(partsConf[2]);
+            Assert.Equal(n2 + 1, nConf);
+        }
+        finally
+        {
+            await tx.RollbackAsync();
+        }
+    }
+
+    [Fact]
+    public async Task StockInCode_ConcurrentCreation_NoCollision()
+    {
+        using var context = _fixture.CreateRealContext();
+
+        long catBefore = await context.Categories.CountAsync();
+        long prodBefore = await context.Products.CountAsync();
+        long whBefore = await context.Warehouses.CountAsync();
+        long whStockBefore = await context.WarehouseStocks.CountAsync();
+        long stockInsBefore = await context.StockIns.CountAsync();
+        long stockInItemsBefore = await context.StockInItems.CountAsync();
+
+        int catId = 0, prodId = 0, whId = 0;
+        var stockInIds = new List<int>();
+
+        try
+        {
+            var cat = new Category { Name = "Cat " + Guid.NewGuid() };
+            context.Categories.Add(cat);
+            await context.SaveChangesAsync();
+            catId = cat.Id;
+
+            var product = new Product { Name = "Prod " + Guid.NewGuid(), Barcode = "BC-" + Guid.NewGuid().ToString("N").Substring(0, 8), CategoryId = catId, CurrentStock = 1000m, IsActive = true };
+            var wh = new Warehouse { Code = "WH-" + Guid.NewGuid().ToString("N").Substring(0, 6).ToUpper(), Name = "Warehouse " + Guid.NewGuid(), IsDefault = false, IsActive = true };
+            context.Products.Add(product);
+            context.Warehouses.Add(wh);
+            await context.SaveChangesAsync();
+            prodId = product.Id;
+            whId = wh.Id;
+
+            var whStock = new WarehouseStock { WarehouseId = whId, ProductId = prodId, Stock = 1000m };
+            context.WarehouseStocks.Add(whStock);
+            await context.SaveChangesAsync();
+
+            // d) 20 request creation concurrency (Task.WhenAll)
+            var tasks = Enumerable.Range(0, 20).Select(async _ =>
+            {
+                using var ctx = _fixture.CreateRealContext();
+                var svc = new StockInService(ctx, new Mock<ILogger<StockInService>>().Object);
+                var req = new StockInCreateRequest(whId, null, "Sup", "Note", new List<StockInItemRequest> { new(prodId, 1m, 100m) }, 0m);
+                return await svc.CreateStockInDraftAsync(1, req);
+            });
+
+            var results = await Task.WhenAll(tasks);
+            Assert.Equal(20, results.Length);
+            var distinctCodes = results.Select(r => r.Code).Distinct().ToList();
+            Assert.Equal(20, distinctCodes.Count);
+
+            stockInIds = results.Select(r => r.Id).ToList();
+
+            // Verify all 20 are Draft and WarehouseStock stock is unchanged (1000m)
+            using var verifyCtx = _fixture.CreateRealContext();
+            foreach (var sId in stockInIds)
+            {
+                var sEntity = await verifyCtx.StockIns.FindAsync(sId);
+                Assert.NotNull(sEntity);
+                Assert.Equal(StockInStatus.Draft, sEntity!.Status);
+            }
+            var finalWhStock = await verifyCtx.WarehouseStocks.FirstAsync(s => s.WarehouseId == whId && s.ProductId == prodId);
+            Assert.Equal(1000m, finalWhStock.Stock);
+        }
+        finally
+        {
+            using var cleanCtx = _fixture.CreateRealContext();
+            if (stockInIds.Any())
+            {
+                var items = await cleanCtx.StockInItems.Where(i => stockInIds.Contains(i.StockInId)).ToListAsync();
+                cleanCtx.StockInItems.RemoveRange(items);
+                var stockIns = await cleanCtx.StockIns.Where(s => stockInIds.Contains(s.Id)).ToListAsync();
+                cleanCtx.StockIns.RemoveRange(stockIns);
+                await cleanCtx.SaveChangesAsync();
+            }
+            if (prodId > 0 && whId > 0)
+            {
+                var whStocks = await cleanCtx.WarehouseStocks.Where(s => s.WarehouseId == whId && s.ProductId == prodId).ToListAsync();
+                cleanCtx.WarehouseStocks.RemoveRange(whStocks);
+                await cleanCtx.SaveChangesAsync();
+            }
+            if (prodId > 0)
+            {
+                var prod = await cleanCtx.Products.FindAsync(prodId);
+                if (prod != null) cleanCtx.Products.Remove(prod);
+                await cleanCtx.SaveChangesAsync();
+            }
+            if (whId > 0)
+            {
+                var wh = await cleanCtx.Warehouses.FindAsync(whId);
+                if (wh != null) cleanCtx.Warehouses.Remove(wh);
+                await cleanCtx.SaveChangesAsync();
+            }
+            if (catId > 0)
+            {
+                var cat = await cleanCtx.Categories.FindAsync(catId);
+                if (cat != null) cleanCtx.Categories.Remove(cat);
+                await cleanCtx.SaveChangesAsync();
+            }
+
+            long catAfter = await cleanCtx.Categories.CountAsync();
+            long prodAfter = await cleanCtx.Products.CountAsync();
+            long whAfter = await cleanCtx.Warehouses.CountAsync();
+            long whStockAfter = await cleanCtx.WarehouseStocks.CountAsync();
+            long stockInsAfter = await cleanCtx.StockIns.CountAsync();
+            long stockInItemsAfter = await cleanCtx.StockInItems.CountAsync();
+
+            Assert.Equal(catBefore, catAfter);
+            Assert.Equal(prodBefore, prodAfter);
+            Assert.Equal(whBefore, whAfter);
+            Assert.Equal(whStockBefore, whStockAfter);
+            Assert.Equal(stockInsBefore, stockInsAfter);
+            Assert.Equal(stockInItemsBefore, stockInItemsAfter);
+        }
+    }
 }

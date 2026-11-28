@@ -92,7 +92,7 @@ data/*
 !data/README.md
 
 pos-api/src/PosApi/wwwroot/uploads/
-anh-goc/
+/anh-goc/
 
 pos-api/src/PosApi/wwwroot/uploads/
-anh-goc/
+/anh-goc/

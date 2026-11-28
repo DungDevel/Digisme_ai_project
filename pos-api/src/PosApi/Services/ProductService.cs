@@ -12,6 +12,7 @@ public interface IProductService
     Task<PagedProductResponse> SearchAsync(string? q, int? categoryId, int page, int pageSize);
     Task<int> CreateAsync(ProductCreateRequest req, int userId, IFormFile? imageFile);
     Task UpdateAsync(int id, ProductUpdateRequest req, int userId, IFormFile? imageFile);
+    Task<string> UpdateImageAsync(int id, IFormFile file, int userId);
     Task DeleteAsync(int id, int userId);
 }
 
@@ -156,5 +157,29 @@ public class ProductService : IProductService
         p.IsActive = false; // Soft Delete
         PosLogService.Write(_db, "PRODUCT_DEACTIVATED", userId, "product", p.Barcode, new { p.Name });
         await _db.SaveChangesAsync();
+    }
+
+    public async Task<string> UpdateImageAsync(int id, IFormFile file, int userId)
+    {
+        if (file == null || file.Length == 0)
+            throw new BusinessRuleException("File hình ảnh không được để trống");
+        if (file.Length > 2 * 1024 * 1024)
+            throw new BusinessRuleException("Kích thước file không được vượt quá 2MB");
+
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == id);
+        if (p == null) throw new KeyNotFoundException($"Không tìm thấy sản phẩm #{id}");
+
+        if (!string.IsNullOrEmpty(p.ImageUrl))
+        {
+            await _storage.DeleteFileAsync(p.ImageUrl);
+        }
+
+        p.ImageUrl = await _storage.SaveFileAsync(file, "products");
+        p.UpdatedAt = DateTime.UtcNow;
+
+        PosLogService.Write(_db, "PRODUCT_IMAGE_UPDATED", userId, "product", p.Barcode, new { p.Name, p.ImageUrl });
+        await _db.SaveChangesAsync();
+
+        return p.ImageUrl;
     }
 }

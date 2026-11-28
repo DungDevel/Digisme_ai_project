@@ -171,4 +171,86 @@ public class CrudAndImageTests
 
         await Assert.ThrowsAsync<BusinessRuleException>(() => storage.SaveFileAsync(mockFile.Object, "test"));
     }
+
+    [Fact]
+    public async Task ProductService_UpdateImage_Success_MaintainsOtherFields()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
+        using (tx)
+        {
+            var mockStorage = new Mock<IFileStorageService>();
+            mockStorage.Setup(s => s.SaveFileAsync(It.IsAny<IFormFile>(), "products")).ReturnsAsync("uploads/products/new.jpg");
+            mockStorage.Setup(s => s.DeleteFileAsync(It.IsAny<string>())).Returns(Task.CompletedTask);
+
+            var mockLog = new Mock<ILogger<ProductService>>();
+            var service = new ProductService(context, mockStorage.Object, mockLog.Object);
+
+            var cat = new Category { Name = "Test Cat Image" };
+            context.Categories.Add(cat);
+            await context.SaveChangesAsync();
+
+            var product = new Product
+            {
+                Name = "Prod Test Image",
+                CategoryId = cat.Id,
+                Barcode = "8939999999999",
+                CostPrice = 12345m,
+                RetailPrice = 20000m,
+                WholesalePrice = 18000m,
+                MemberPrice = 17000m,
+                MinStock = 5m,
+                IsActive = true,
+                ImageUrl = "uploads/products/old.jpg"
+            };
+            context.Products.Add(product);
+            await context.SaveChangesAsync();
+            int pId = product.Id;
+
+            var mockFile = new Mock<IFormFile>();
+            mockFile.Setup(f => f.FileName).Returns("test.jpg");
+            mockFile.Setup(f => f.ContentType).Returns("image/jpeg");
+            mockFile.Setup(f => f.Length).Returns(1000);
+
+            var newUrl = await service.UpdateImageAsync(pId, mockFile.Object, userId: 1);
+            Assert.Equal("uploads/products/new.jpg", newUrl);
+
+            var updatedProd = await context.Products.FindAsync(pId);
+            Assert.Equal("uploads/products/new.jpg", updatedProd!.ImageUrl);
+            Assert.Equal(12345m, updatedProd.CostPrice);
+            Assert.Equal(5m, updatedProd.MinStock);
+            Assert.True(updatedProd.IsActive);
+            Assert.Equal(20000m, updatedProd.RetailPrice);
+
+            mockStorage.Verify(s => s.DeleteFileAsync("uploads/products/old.jpg"), Times.Once);
+        }
+    }
+
+    [Fact]
+    public async Task ProductService_UpdateImage_Validations()
+    {
+        var (context, tx) = _fixture.CreateContextWithTransaction();
+        using (context)
+        using (tx)
+        {
+            var mockStorage = new Mock<IFileStorageService>();
+            var mockLog = new Mock<ILogger<ProductService>>();
+            var service = new ProductService(context, mockStorage.Object, mockLog.Object);
+
+            // 1. Non-existent product
+            var mockFile = new Mock<IFormFile>();
+            mockFile.Setup(f => f.Length).Returns(100);
+            await Assert.ThrowsAsync<KeyNotFoundException>(() => service.UpdateImageAsync(99999, mockFile.Object, userId: 1));
+
+            // 2. Empty file
+            var emptyFile = new Mock<IFormFile>();
+            emptyFile.Setup(f => f.Length).Returns(0);
+            await Assert.ThrowsAsync<BusinessRuleException>(() => service.UpdateImageAsync(1, emptyFile.Object, userId: 1));
+
+            // 3. Oversized file > 2MB
+            var largeFile = new Mock<IFormFile>();
+            largeFile.Setup(f => f.Length).Returns(3 * 1024 * 1024);
+            await Assert.ThrowsAsync<BusinessRuleException>(() => service.UpdateImageAsync(1, largeFile.Object, userId: 1));
+        }
+    }
 }

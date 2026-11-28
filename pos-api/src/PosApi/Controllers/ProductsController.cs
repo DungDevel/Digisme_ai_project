@@ -63,6 +63,29 @@ public class ProductsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{id:int}/image")]
+    [Authorize(Policy = "ManagerOnly")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UpdateImage(int id, IFormFile imageFile)
+    {
+        if (imageFile == null || imageFile.Length == 0)
+            return BadRequest(new { error = "File hình ảnh không được để trống" });
+
+        try
+        {
+            var imageUrl = await _productService.UpdateImageAsync(id, imageFile, UserId);
+            return Ok(new { id, imageUrl });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+        catch (BusinessRuleException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpDelete("{id:int}")]
     [Authorize(Policy = "ManagerOnly")]
     public async Task<IActionResult> Delete(int id)
